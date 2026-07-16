@@ -1,0 +1,51 @@
+{
+  "topic_id": "java-string-basics",
+  "topic_title": "String Basics",
+  "lesson_objective": "A String in Java is an object, not a primitive — and every method that looks like it 'changes' a String actually creates a brand new one.",
+  "lesson_summary": "This lesson busts the assumption that Strings behave like primitives, using a side-by-side == vs .equals() comparison and a method call whose result is thrown away, to show that Strings are objects and are immutable.",
+  "key_points": [
+    "A String looks like a primitive in code but is actually an object under the hood.",
+    "== compares whether two Strings are the same object, not whether they contain the same text.",
+    "String methods never modify the original — they return a new String, which you must capture."
+  ],
+  "step_by_step_explanation": [
+    "Open with two Strings that look identical, compared with == — seemingly true, then a version built differently that returns false, breaking the assumption.",
+    "Introduce .equals() as the fix — it compares actual text content, not identity.",
+    "Call .toUpperCase() on a String without reassigning the result, and show the original variable is completely unchanged.",
+    "Reassign the result this time and show the transformation actually takes effect.",
+    "Land on the takeaway: Strings don't change in place — methods hand you a new one, and it's on you to keep it."
+  ],
+  "core_example": {
+    "description": "A == comparison that surprises, followed by a .toUpperCase() call whose result is dropped, then correctly captured.",
+    "code_sketch": "String a = \"java\";\nString b = new String(\"java\");\nSystem.out.println(a == b); // false\nSystem.out.println(a.equals(b)); // true\n\na.toUpperCase();\nSystem.out.println(a); // still \"java\"\na = a.toUpperCase();\nSystem.out.println(a); // \"JAVA\"",
+    "focus_note": "Pause on the line System.out.println(a); right after the ignored toUpperCase() call — that's the moment immutability lands."
+  },
+  "analogy": "Calling a method on a String is like asking someone to translate a sentence out loud: the original sentence on the page doesn't change — you just get a new spoken version back, and if you don't write it down, it's gone.",
+  "common_mistakes": [
+    "Using == to compare String content instead of .equals().",
+    "Assuming a String method like .toUpperCase() modifies the variable it was called on."
+  ],
+  "what_to_avoid_saying": [
+    "Do not say == 'sometimes' works for comparing String content and leave it at that — either explain why it can appear to work (string pool), if there's time, or just show the failure case plainly and move on.",
+    "Do not say Strings 'can't be changed at all' without qualifying that a variable can still be reassigned to a new String — it's the existing String object that never changes."
+  ],
+  "beginner_takeaway": "A String method's result isn't optional to capture — no assignment means nothing changed.",
+  "retention_hook": "Two Strings that look exactly the same. One line of code says they're not equal. Here's why Java isn't wrong.",
+  "visual_notes": [
+    "Show both String declarations side by side with a visual 'are these the same object?' question mark before revealing the == result.",
+    "Show the ignored toUpperCase() line with a 'nothing happened' stamp before showing the corrected, reassigned version."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [
+      "Whether to explain the string constant pool (why two identical literals often are == equal) was left out for time; flagged in case a future revision has room to address it without overcomplicating the core point."
+    ],
+    "unresolved_conflicts": []
+  },
+  "audience_level": "beginner",
+  "target_duration_seconds": 50,
+  "teaching_style": "myth-busting",
+  "lesson_version": "1.0.0",
+  "generated_at": "2026-07-10T10:00:00Z",
+  "based_on_research_version": "1.0.0"
+}

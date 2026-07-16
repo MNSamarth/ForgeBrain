@@ -1,0 +1,48 @@
+{
+  "topic_id": "java-for-loop",
+  "topic_title": "For Loops",
+  "lesson_objective": "A for loop replaces repeated, near-identical lines of code with one controlled repetition, running exactly as many times as you tell it to — no more, no less.",
+  "lesson_summary": "This lesson opens with the pain of copy-pasted print statements, introduces the for loop as the fix, and immediately shows the off-by-one trap that comes with controlling your own loop bounds.",
+  "key_points": [
+    "Repeating a line five times by hand doesn't scale and invites copy-paste mistakes.",
+    "A for loop has three parts: a starting point, a continue condition, and an update step.",
+    "The loop runs exactly as many times as the condition allows — getting the boundary wrong is the most common bug."
+  ],
+  "step_by_step_explanation": [
+    "Open on five nearly-identical System.out.println lines printing numbers 1 through 5 — the tedious, error-prone way.",
+    "Rewrite it as a single for loop and show the same output with one line of logic.",
+    "Break down the loop's three parts: initialization, condition, update — in one breath, on screen.",
+    "Introduce the off-by-one trap: change < to <= and show one extra, unintended iteration.",
+    "Land on the takeaway: the loop runs exactly as many times as its condition says — read that condition carefully."
+  ],
+  "core_example": {
+    "description": "Five duplicated print statements rewritten as a single for loop, then deliberately broken with an off-by-one change.",
+    "code_sketch": "for (int i = 1; i <= 5; i++) {\n    System.out.println(i);\n}",
+    "focus_note": "Highlight the condition i <= 5 specifically when introducing the off-by-one trap — swap to i < 5 on screen to show the visible difference in output."
+  },
+  "analogy": "A for loop is like giving someone exact directions to a shelf: start here, keep going while this is true, move this much each step — miss one part of the instructions and they stop in the wrong place.",
+  "common_mistakes": [
+    "Off-by-one errors from an incorrect loop bound (< vs <=).",
+    "Copy-pasting near-identical lines instead of recognizing a repeatable pattern."
+  ],
+  "what_to_avoid_saying": [
+    "Do not say a for loop is 'always' the right choice over a while loop — it's specifically suited to a known number of iterations; that contrast belongs to the While Loops lesson, not this one."
+  ],
+  "beginner_takeaway": "A for loop runs exactly as many times as its condition allows — read the condition, don't assume it.",
+  "retention_hook": "You've typed the same line five times in a row. There's a one-line fix, and it comes with exactly one trap.",
+  "visual_notes": [
+    "Show the five duplicated print lines fading into the single for loop as the rewrite happens.",
+    "Freeze-frame on the loop's three-part header (init; condition; update) with each part labeled."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [],
+    "unresolved_conflicts": []
+  },
+  "audience_level": "beginner",
+  "target_duration_seconds": 40,
+  "teaching_style": "problem-first",
+  "lesson_version": "1.0.0",
+  "generated_at": "2026-07-01T10:00:00Z",
+  "based_on_research_version": "1.0.0"
+}

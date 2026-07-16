@@ -1,0 +1,245 @@
+{
+  "generated_from": {
+    "curriculum": "curriculum/java-roadmap.json",
+    "memory_state": "memory/examples/sample-memory-state.json",
+    "selection_timestamp": "2026-07-16T09:00:00Z"
+  },
+  "evaluation_scope_note": "To keep this illustration readable, candidate evaluation below is scoped to the six topics tracked in memory/examples/sample-memory-state.json plus each tracked topic's direct next_topics from the curriculum (the natural frontier around them), rather than all 81 roadmap topics. A real selector run evaluates the entire roadmap the same way; the algorithm itself is unchanged, only the example's candidate set is narrowed for clarity. educational_sequence_fit below is computed relative to position within this scoped set, not the full roadmap.",
+  "decisions": {
+    "next_topic": {
+      "mode": "next_topic",
+      "selected_topic_id": "java-operators",
+      "selected_topic_title": "Operators",
+      "reason": "java-operators is the closest not-yet-covered topic to the curriculum frontier — it immediately follows the posted java-variables-and-data-types and its only prerequisite is already posted. It has never been used, and it inherits above-average momentum (performance_boost) from java-variables-and-data-types' strong 0.78 performance score. No audience demand data exists yet in Phase 1, so that factor was neutral across every candidate.",
+      "score": 0.76,
+      "candidate_topics": [
+        {
+          "topic_id": "java-operators",
+          "title": "Operators",
+          "score": 0.76,
+          "factors": {
+            "educational_sequence_fit": 1.0,
+            "novelty_score": 1.0,
+            "performance_boost": 0.39,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-while-loop",
+          "title": "While Loops",
+          "score": 0.52,
+          "factors": {
+            "educational_sequence_fit": 0.5,
+            "novelty_score": 1.0,
+            "performance_boost": 0.32,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-parameters-and-return",
+          "title": "Parameters and Return Values",
+          "score": 0.47,
+          "factors": {
+            "educational_sequence_fit": 0.34,
+            "novelty_score": 1.0,
+            "performance_boost": 0.44,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-variable-scope",
+          "title": "Variable Scope",
+          "score": 0.46,
+          "factors": {
+            "educational_sequence_fit": 0.33,
+            "novelty_score": 1.0,
+            "performance_boost": 0.44,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-exceptions-basics",
+          "title": "Exceptions Basics",
+          "score": 0.31,
+          "factors": {
+            "educational_sequence_fit": 0.14,
+            "novelty_score": 1.0,
+            "performance_boost": 0.0,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        }
+      ],
+      "rejected_topics": [
+        { "topic_id": "java-classes-and-objects", "title": "Classes and Objects", "reason": "Prerequisite java-static-vs-instance has not reached posted status." },
+        { "topic_id": "java-multidimensional-arrays", "title": "Multidimensional Arrays", "reason": "Prerequisite java-arrays-basics has not reached posted status (currently needs_revisit)." },
+        { "topic_id": "java-collections-overview", "title": "Collections Framework Overview", "reason": "Prerequisites java-arrays-basics and java-interfaces have not reached posted status." },
+        { "topic_id": "java-string-methods", "title": "Common String Methods", "reason": "Prerequisite java-string-basics has not reached posted status (currently in_progress)." },
+        { "topic_id": "java-constructors", "title": "Constructors", "reason": "Prerequisite java-classes-and-objects has not reached posted status." },
+        { "topic_id": "java-encapsulation", "title": "Encapsulation", "reason": "Prerequisite java-classes-and-objects has not reached posted status." },
+        { "topic_id": "java-generics-basics", "title": "Generics Basics", "reason": "Prerequisite java-classes-and-objects has not reached posted status." },
+        { "topic_id": "java-threads-basics", "title": "Threads Basics", "reason": "Prerequisite java-classes-and-objects has not reached posted status." }
+      ],
+      "blocked_by_prerequisite": [
+        "java-classes-and-objects",
+        "java-multidimensional-arrays",
+        "java-collections-overview",
+        "java-string-methods",
+        "java-constructors",
+        "java-encapsulation",
+        "java-generics-basics",
+        "java-threads-basics"
+      ],
+      "blocked_by_recent_use": [],
+      "needs_revision": ["java-arrays-basics"],
+      "selection_timestamp": "2026-07-16T09:00:00Z"
+    },
+
+    "revision_topic": {
+      "mode": "revision_topic",
+      "selected_topic_id": null,
+      "selected_topic_title": null,
+      "reason": "The only topic currently at status needs_revisit, java-arrays-basics, is still inside its cooldown window (avoid_until: 2026-08-01, which is after this selection_timestamp). No other topic is flagged needs_revisit. A null selection here is expected behavior, not an error — there is no eligible revision candidate right now.",
+      "score": null,
+      "candidate_topics": [],
+      "rejected_topics": [
+        { "topic_id": "java-arrays-basics", "title": "Arrays Basics", "reason": "On cooldown until 2026-08-01." }
+      ],
+      "blocked_by_prerequisite": [],
+      "blocked_by_recent_use": ["java-arrays-basics"],
+      "needs_revision": ["java-arrays-basics"],
+      "selection_timestamp": "2026-07-16T09:00:00Z"
+    },
+
+    "high_performance_topic": {
+      "mode": "high_performance_topic",
+      "selected_topic_id": "java-parameters-and-return",
+      "selected_topic_title": "Parameters and Return Values",
+      "reason": "java-method-basics posted with a 0.88 performance_score, above the 0.8 high-performance threshold, making its related_topics eligible for this mode. Both java-parameters-and-return and java-variable-scope inherit that momentum equally, but java-parameters-and-return wins narrowly on educational_sequence_fit — it is the very next topic listed after java-method-basics in the curriculum's methods-and-scope level.",
+      "score": 0.44,
+      "candidate_topics": [
+        {
+          "topic_id": "java-parameters-and-return",
+          "title": "Parameters and Return Values",
+          "score": 0.44,
+          "factors": {
+            "educational_sequence_fit": 0.34,
+            "novelty_score": 1.0,
+            "performance_boost": 0.44,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-variable-scope",
+          "title": "Variable Scope",
+          "score": 0.44,
+          "factors": {
+            "educational_sequence_fit": 0.33,
+            "novelty_score": 1.0,
+            "performance_boost": 0.44,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        }
+      ],
+      "rejected_topics": [],
+      "blocked_by_prerequisite": [],
+      "blocked_by_recent_use": [],
+      "needs_revision": ["java-arrays-basics"],
+      "selection_timestamp": "2026-07-16T09:00:00Z",
+      "note": "java-parameters-and-return and java-variable-scope scored 0.438 and 0.436 respectively before rounding to two decimal places; the win is real but narrow, decided by educational_sequence_fit."
+    },
+
+    "gap_filler_topic": {
+      "mode": "gap_filler_topic",
+      "selected_topic_id": "java-operators",
+      "selected_topic_title": "Operators",
+      "reason": "No audience demand signal exists yet in Phase 1 (see topic-ranking.json), so this mode currently falls back to ranking on curriculum proximity, novelty, and momentum alone — effectively behaving like next_topic restricted to unqueued topics, as documented. java-operators wins on the same basis as the next_topic decision. This result should be treated as weak until real audience feedback data exists to differentiate candidates.",
+      "score": 0.44,
+      "candidate_topics": [
+        {
+          "topic_id": "java-operators",
+          "title": "Operators",
+          "score": 0.44,
+          "factors": {
+            "educational_sequence_fit": 1.0,
+            "novelty_score": 1.0,
+            "performance_boost": 0.39,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-while-loop",
+          "title": "While Loops",
+          "score": 0.33,
+          "factors": {
+            "educational_sequence_fit": 0.5,
+            "novelty_score": 1.0,
+            "performance_boost": 0.32,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-parameters-and-return",
+          "title": "Parameters and Return Values",
+          "score": 0.31,
+          "factors": {
+            "educational_sequence_fit": 0.34,
+            "novelty_score": 1.0,
+            "performance_boost": 0.44,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-variable-scope",
+          "title": "Variable Scope",
+          "score": 0.31,
+          "factors": {
+            "educational_sequence_fit": 0.33,
+            "novelty_score": 1.0,
+            "performance_boost": 0.44,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        },
+        {
+          "topic_id": "java-exceptions-basics",
+          "title": "Exceptions Basics",
+          "score": 0.23,
+          "factors": {
+            "educational_sequence_fit": 0.14,
+            "novelty_score": 1.0,
+            "performance_boost": 0.0,
+            "audience_demand_signal": 0.0,
+            "repetition_penalty": 0.0,
+            "revision_priority": 0.0
+          }
+        }
+      ],
+      "rejected_topics": [],
+      "blocked_by_prerequisite": [],
+      "blocked_by_recent_use": [],
+      "needs_revision": ["java-arrays-basics"],
+      "selection_timestamp": "2026-07-16T09:00:00Z"
+    }
+  }
+}

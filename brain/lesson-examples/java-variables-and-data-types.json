@@ -1,0 +1,49 @@
+{
+  "topic_id": "java-variables-and-data-types",
+  "topic_title": "Variables and Data Types",
+  "lesson_objective": "A variable's type is locked in the moment you declare it, and Java enforces that before your code ever runs.",
+  "lesson_summary": "This lesson shows that declaring a variable in Java means committing to a type up front, using a labeled storage bin analogy, and demonstrates the two ways that type gets enforced: a compile-time mismatch and a silent overflow.",
+  "key_points": [
+    "A variable is a named, typed storage location, not just a label.",
+    "Java checks the type at compile time, not runtime — a mismatch won't even build.",
+    "Even a 'valid' type can misbehave at its edges, like int silently overflowing."
+  ],
+  "step_by_step_explanation": [
+    "Open on the labeled storage bin analogy: a bin marked 'books' won't accept a couch.",
+    "Show declaring an int, a double, and a boolean, each holding a value of its declared type.",
+    "Attempt to assign a String literal to the int variable — show the compiler rejecting it before the program ever runs.",
+    "Contrast: show int overflow (Integer.MAX_VALUE + 1) compiling and running fine, but producing a silently wrong number — a mismatch of expectation, not of type.",
+    "Land on the takeaway: type safety catches one class of bug at compile time, but not every bug — you still have to know your numbers' limits."
+  ],
+  "core_example": {
+    "description": "Three variable declarations (int, double, boolean) followed by one line that fails to compile from a type mismatch.",
+    "code_sketch": "int age = 25;\ndouble price = 19.99;\nboolean isJavaFun = true;\n\nint total = \"25\"; // does not compile",
+    "focus_note": "Highlight the final line and the resulting compiler error message — that's the moment the lesson's point lands."
+  },
+  "analogy": "A variable is like a labeled storage bin at a warehouse: the label says the bin can only hold books, and the warehouse simply won't let you shelve a couch there.",
+  "common_mistakes": [
+    "Assuming Java infers a variable's type from its value instead of requiring an explicit declared type.",
+    "Expecting a type mismatch to be a runtime surprise rather than a compile-time error."
+  ],
+  "what_to_avoid_saying": [
+    "Do not say Java 'infers' the type of a normal variable declaration — that's only true for var, a separate later concept.",
+    "Do not say int overflow throws an exception — it silently wraps around."
+  ],
+  "beginner_takeaway": "If it compiles, the type is already right — but that doesn't mean the value inside it is safe from every kind of mistake.",
+  "retention_hook": "Java won't let you put a couch in a bin marked 'books' — and it checks before you even try to lift it.",
+  "visual_notes": [
+    "Highlight the compiler error line in red the instant the mismatched assignment appears on screen.",
+    "Show the storage bin visual behind the three variable declarations as they're introduced."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [],
+    "unresolved_conflicts": []
+  },
+  "audience_level": "beginner",
+  "target_duration_seconds": 45,
+  "teaching_style": "direct-explanation",
+  "lesson_version": "1.0.0",
+  "generated_at": "2026-06-27T10:00:00Z",
+  "based_on_research_version": "1.0.0"
+}

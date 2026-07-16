@@ -1,0 +1,115 @@
+{
+  "ranking_version": "1.0.0",
+  "description": "Scoring model used by the ForgeBrain topic selector to rank eligible candidate topics. Weighted factors are normalized to a 0.0-1.0 range unless noted as a gate. Gates are pass/fail checks applied before scoring; a topic that fails a gate never reaches the weighted-score step.",
+  "gates": {
+    "readiness": {
+      "description": "A topic is only a candidate if every id in its curriculum prerequisites has memory status 'posted'.",
+      "pass_condition": "all prerequisite topic_ids have status == 'posted' in memory.topics",
+      "fail_result": "excluded from candidate_topics; listed in rejected_topics with blocked_by_prerequisite = true"
+    },
+    "cooldown": {
+      "description": "A topic is excluded while it is in its post-use or post-underperformance cooldown window.",
+      "pass_condition": "avoid_until is null, or is a date before selection_timestamp",
+      "fail_result": "excluded from candidate_topics; listed in rejected_topics with blocked_by_recent_use = true",
+      "override": "revision_topic mode may still list a cooling-down topic in needs_revision for visibility, but will not select it while its cooldown is active"
+    },
+    "not_already_in_progress": {
+      "description": "The topic matching memory.current_topic_id, if its status is 'in_progress', is not a candidate in any mode — it is already committed to the pipeline.",
+      "fail_result": "excluded from candidate_topics; not treated as a rejection since it isn't being turned down, it's already active"
+    }
+  },
+  "factors": {
+    "educational_sequence_fit": {
+      "range": [0.0, 1.0],
+      "higher_is_better": true,
+      "description": "How close the candidate sits to the current frontier of the curriculum. Computed from the candidate's position in the full ordered topic sequence (levels in curriculum order, topics in order within each level) relative to the earliest topic with status not 'posted'. The nearer the candidate is to that frontier, the higher the score; topics further down the roadmap score lower even if their prerequisites happen to already be satisfied."
+    },
+    "novelty_score": {
+      "range": [0.0, 1.0],
+      "higher_is_better": true,
+      "description": "1.0 for a topic never produced (times_used == 0). Decreases as times_used increases, using 1.0 / (1 + times_used)."
+    },
+    "repetition_penalty": {
+      "range": [0.0, 1.0],
+      "higher_is_better": false,
+      "description": "Rises with how recently and how often a topic has been used. 0.0 for a topic never used or last used long in the past; approaches 1.0 for a topic used very recently or very frequently. Subtracted from the score (see mode weights), not added."
+    },
+    "performance_boost": {
+      "range": [0.0, 1.0],
+      "higher_is_better": true,
+      "description": "For an already-posted candidate (used in revision_topic and high_performance_topic modes), this is the topic's own performance_score. For a not-yet-posted candidate (used in next_topic and gap_filler_topic modes), this is inherited momentum: the highest performance_score among already-posted topics that list the candidate in their related_topics, multiplied by 0.5 since it is an indirect signal, not a direct one."
+    },
+    "revision_priority": {
+      "range": [0.0, 1.0],
+      "higher_is_better": true,
+      "description": "Only meaningful for topics with status 'needs_revisit'. Computed as (1 - performance_score) / (1 + revision_count), so a topic with worse performance ranks higher for revision, but that priority decays as it's revised more times, preventing an endless revision loop on one topic."
+    },
+    "audience_demand_signal": {
+      "range": [0.0, 1.0],
+      "higher_is_better": true,
+      "status": "not yet populated in Phase 1",
+      "description": "Reserved for future audience feedback data (explicit requests, comment themes, search interest). Defaults to 0.0 for every candidate until an audience feedback ingestion path exists (see docs/ARCHITECTURE.md, Analytics and Feedback Loop)."
+    }
+  },
+  "modes": {
+    "next_topic": {
+      "description": "Normal forward progression through the curriculum. The default mode.",
+      "candidate_pool": "topics with status in ['not_covered', 'queued'] that pass the readiness and cooldown gates and are not the current in-progress topic",
+      "weights": {
+        "educational_sequence_fit": 0.45,
+        "novelty_score": 0.25,
+        "performance_boost": 0.15,
+        "audience_demand_signal": 0.15,
+        "repetition_penalty": -0.15,
+        "revision_priority": 0.0
+      }
+    },
+    "revision_topic": {
+      "description": "Re-teach a topic that underperformed, to replace or improve prior content before moving on.",
+      "candidate_pool": "topics with status == 'needs_revisit' that pass the cooldown gate",
+      "weights": {
+        "revision_priority": 0.6,
+        "audience_demand_signal": 0.2,
+        "performance_boost": -0.2,
+        "educational_sequence_fit": 0.0,
+        "novelty_score": 0.0,
+        "repetition_penalty": 0.0
+      }
+    },
+    "high_performance_topic": {
+      "description": "Capitalize on momentum by surfacing a closely related, not-yet-covered topic right after a topic that performed unusually well.",
+      "candidate_pool": "topics with status in ['not_covered', 'queued'] that pass the readiness and cooldown gates and appear in related_topics of at least one posted topic with performance_score >= thresholds.high_performance_threshold",
+      "weights": {
+        "performance_boost": 0.5,
+        "educational_sequence_fit": 0.2,
+        "novelty_score": 0.15,
+        "audience_demand_signal": 0.15,
+        "repetition_penalty": -0.1,
+        "revision_priority": 0.0
+      }
+    },
+    "gap_filler_topic": {
+      "description": "Surface eligible material the audience appears to be missing: unqueued topics with a demand signal, favored over strict curriculum order.",
+      "candidate_pool": "topics with status == 'not_covered' that pass the readiness and cooldown gates and are not already present in the queue",
+      "weights": {
+        "audience_demand_signal": 0.5,
+        "educational_sequence_fit": 0.2,
+        "novelty_score": 0.2,
+        "performance_boost": 0.1,
+        "repetition_penalty": -0.1,
+        "revision_priority": 0.0
+      },
+      "note": "Until audience feedback ingestion exists, audience_demand_signal is always 0.0, so this mode currently behaves like next_topic restricted to unqueued topics, and is expected to return a weak or empty result. That is intended, not a defect."
+    }
+  },
+  "tie_breakers": [
+    "lower educational_sequence_fit distance (earlier position in curriculum order)",
+    "lower topic_id, alphabetically, as the final deterministic fallback"
+  ],
+  "thresholds": {
+    "needs_revisit_performance_score_below": 0.5,
+    "high_performance_threshold": 0.8,
+    "default_cooldown_days": 14,
+    "max_revision_count_before_deprioritize": 2
+  }
+}

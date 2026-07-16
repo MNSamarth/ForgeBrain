@@ -1,0 +1,51 @@
+{
+  "topic_id": "java-arrays-basics",
+  "topic_title": "Arrays Basics",
+  "lesson_objective": "An array stores a fixed number of same-typed values under one name, each reachable by position — and asking for a position that doesn't exist crashes the program immediately.",
+  "lesson_summary": "This lesson opens with the pain of five separate score variables, introduces the array as the fix, and moves the out-of-bounds crash earlier than the previous version of this lesson did, to keep the stakes visible throughout.",
+  "key_points": [
+    "Five separate variables for five related values is unwieldy and doesn't scale.",
+    "An array holds a fixed number of same-typed values under one name, indexed from 0.",
+    "Asking for an index that doesn't exist isn't a warning — it crashes the program at that exact line."
+  ],
+  "step_by_step_explanation": [
+    "Open on five separate int variables for five student scores — already awkward at five, unworkable at fifty.",
+    "Rewrite as one array declaration holding all five scores.",
+    "Fill and read the array using its indices, calling out that indexing starts at 0.",
+    "Immediately trigger ArrayIndexOutOfBoundsException by asking for index 5 — right after establishing the locker analogy, not saved for later.",
+    "Land on the takeaway: an array's size is fixed the moment it's created, so knowing your bounds isn't optional."
+  ],
+  "core_example": {
+    "description": "Five student scores as separate variables, rewritten as one array, then an immediate out-of-bounds access to show the failure mode early.",
+    "code_sketch": "int[] scores = {88, 92, 79, 95, 84};\nSystem.out.println(scores[0]);\n\nSystem.out.println(scores[5]); // ArrayIndexOutOfBoundsException",
+    "focus_note": "Highlight scores[5] and let the actual exception message appear on screen — don't paraphrase it."
+  },
+  "analogy": "An array is like a single row of numbered lockers: one locker, one item, and if you ask for locker 10 when there are only 5, you don't get an empty locker back — the whole thing stops.",
+  "common_mistakes": [
+    "Assuming an array can grow or shrink after it's created, the way a general 'list' might.",
+    "Off-by-one indexing errors from forgetting arrays start at index 0."
+  ],
+  "what_to_avoid_saying": [
+    "Do not describe out-of-bounds array access as 'undefined behavior' — Java always throws a well-defined ArrayIndexOutOfBoundsException.",
+    "Do not say array size can be changed after creation — that's ArrayList, a separate later topic."
+  ],
+  "beginner_takeaway": "An array's size is fixed the moment it's created — know your bounds before you ask for an index.",
+  "retention_hook": "You've got five scores and five variables. Here's the one-line fix — and the one mistake that will crash it instantly.",
+  "visual_notes": [
+    "Highlight the exception message in red the instant scores[5] runs, not after a delay.",
+    "Show the numbered-locker visual laid out under the array declaration as indices are introduced."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [
+      "This is a revision lesson. The prior version's core_concepts and hook placed the ArrayIndexOutOfBoundsException demo late, after slower setup; memory notes attributed a 0.41 performance_score and 0.33 retention_score partly to that pacing. This lesson moves the failure mode earlier and keeps the stakes visible from the first beat. Whether this actually improves retention can only be confirmed once the revised reel is posted and measured."
+    ],
+    "unresolved_conflicts": []
+  },
+  "audience_level": "beginner",
+  "target_duration_seconds": 45,
+  "teaching_style": "problem-first",
+  "lesson_version": "1.0.0",
+  "generated_at": "2026-07-16T11:00:00Z",
+  "based_on_research_version": "1.0.0"
+}

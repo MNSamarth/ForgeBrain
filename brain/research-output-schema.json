@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/research-output-schema.json",
+  "title": "ForgeBrain Topic Research Brief",
+  "description": "The structured, lesson-ready output of the research stage for a single curriculum topic. Produced after topic selection (see topic-selector-spec.md) and consumed by the Lesson Generator. See research-spec.md for the full process this schema supports.",
+  "type": "object",
+  "required": [
+    "topic_id",
+    "topic_title",
+    "topic_summary",
+    "learning_objective",
+    "difficulty",
+    "audience_level",
+    "target_reel_length_seconds",
+    "prerequisites",
+    "common_misconceptions",
+    "core_concepts",
+    "simple_analogy",
+    "code_example_ideas",
+    "beginner_explanation",
+    "advanced_notes",
+    "related_topics",
+    "safety_notes",
+    "confidence_notes",
+    "sources",
+    "research_version",
+    "generated_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "topic_id": {
+      "type": "string",
+      "description": "Matches the corresponding id in curriculum/java-roadmap.json."
+    },
+    "topic_title": {
+      "type": "string",
+      "description": "Matches the corresponding title in curriculum/java-roadmap.json."
+    },
+    "topic_summary": {
+      "type": "string",
+      "description": "One to three plain-language sentences on what this topic is and why it matters. Seed material for the reel's hook."
+    },
+    "learning_objective": {
+      "type": "string",
+      "description": "The single outcome the reel must deliver. Mirrors curriculum learning_objective, refined if research surfaced a clearer framing."
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["beginner", "intermediate", "advanced"],
+      "description": "Mirrors the curriculum topic's difficulty tier."
+    },
+    "audience_level": {
+      "type": "string",
+      "enum": ["beginner", "intermediate", "advanced"],
+      "description": "Audience level this brief was written for. May differ from difficulty if explicitly requested by the caller."
+    },
+    "target_reel_length_seconds": {
+      "type": "integer",
+      "minimum": 15,
+      "maximum": 180,
+      "description": "The reel length this brief was scoped for. Bounds how many core_concepts and code_example_ideas are reasonable."
+    },
+    "prerequisites": {
+      "type": "array",
+      "description": "Minimal references to prerequisite topics. The audience can be assumed to already know these; the brief should not re-explain them.",
+      "items": { "$ref": "#/definitions/topicRef" }
+    },
+    "common_misconceptions": {
+      "type": "array",
+      "description": "2-4 items recommended. What beginners commonly get wrong about this topic. Strong hook and review-checklist material.",
+      "items": { "type": "string" }
+    },
+    "core_concepts": {
+      "type": "array",
+      "description": "3-5 items recommended, in teaching order. The fixed set of ideas the reel must cover.",
+      "items": { "type": "string" }
+    },
+    "simple_analogy": {
+      "type": "string",
+      "description": "One clear, concrete analogy for this topic, validated for accuracy. Used in the hook and/or the core explanation."
+    },
+    "code_example_ideas": {
+      "type": "array",
+      "description": "2-4 items recommended. Pre-selected example concepts the Script Generator can choose from and turn into an actual code sample.",
+      "items": { "type": "string" }
+    },
+    "beginner_explanation": {
+      "type": "string",
+      "description": "A plain-language explanation of the topic, short enough to read aloud in under 20 seconds, that the Lesson Generator can adapt directly into narration."
+    },
+    "advanced_notes": {
+      "type": "array",
+      "description": "Correctness nuances beyond the beginner explanation. Not meant to be spoken in the reel; used by the Reviewer to confirm the simplified explanation didn't become false.",
+      "items": { "type": "string" }
+    },
+    "related_topics": {
+      "type": "array",
+      "description": "topic_ids of related topics, mirroring curriculum related_topics. Useful for callbacks or a closing 'next up' line.",
+      "items": { "type": "string" }
+    },
+    "safety_notes": {
+      "type": "array",
+      "description": "Explicit statements about this topic that must NOT be said, because they are technically incorrect or misleading. The primary hallucination guardrail, read by the Reviewer stage.",
+      "items": { "type": "string" }
+    },
+    "confidence_notes": {
+      "$ref": "#/definitions/confidenceNotes"
+    },
+    "sources": {
+      "type": "array",
+      "description": "Reserved for future citation tracking. Empty in Phase 1, where no external source-fetching pipeline exists yet.",
+      "items": { "$ref": "#/definitions/sourceRef" }
+    },
+    "research_version": {
+      "type": "string",
+      "description": "Version of the research process/schema that produced this brief, for future caching and migration.",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this brief was produced."
+    }
+  },
+  "definitions": {
+    "topicRef": {
+      "type": "object",
+      "required": ["topic_id", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": { "type": "string" },
+        "title": { "type": "string" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "description": "Reserved shape for a future cited source. Not populated in Phase 1.",
+      "required": ["name", "trust_tier"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "url": { "type": ["string", "null"] },
+        "trust_tier": {
+          "type": "string",
+          "enum": ["official", "trusted-reference", "internal-validated", "unverified"],
+          "description": "Used by future source-ranking logic to weigh conflicting sources."
+        },
+        "retrieved_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "confidenceNotes": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Coarse self-assessment of how well-grounded this brief is."
+        },
+        "flagged_uncertainties": {
+          "type": "array",
+          "description": "Specific points the research stage wasn't fully certain about, flagged for reviewer attention rather than presented as settled fact.",
+          "items": { "type": "string" }
+        },
+        "unresolved_conflicts": {
+          "type": "array",
+          "description": "Reserved for future multi-source contradiction handling. Empty until multiple sources are actually cross-checked against each other.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "topic_id": "java-method-basics",
+  "topic_title": "Method Basics",
+  "lesson_objective": "A method lets you name a block of logic once and reuse it by calling that name, instead of retyping the same code everywhere you need it.",
+  "lesson_summary": "This lesson contrasts a program with duplicated logic scattered across three places against the same program refactored into one named method called three times, then breaks down a method's signature.",
+  "key_points": [
+    "Duplicated logic means duplicated bugs — fix it in one place, forget the other two.",
+    "A method bundles logic under one name you can call from anywhere.",
+    "A method's signature (name, parameters, return type) is the contract for how it's used."
+  ],
+  "step_by_step_explanation": [
+    "Show the same three-line calculation duplicated in three places in a program.",
+    "Extract it into one method with a clear name and a return type.",
+    "Call the method three times instead, producing identical output with a fraction of the code.",
+    "Label the method signature on screen: name, parameter list, return type — the three things a caller needs to know.",
+    "Land on the takeaway: a method is a promise — call it the same way, get the same kind of result, every time."
+  ],
+  "core_example": {
+    "description": "The same 'square a number' calculation duplicated three times, refactored into a single reusable method.",
+    "code_sketch": "static int square(int n) {\n    return n * n;\n}\n\nint a = square(4);\nint b = square(7);\nint c = square(10);",
+    "focus_note": "Highlight the method signature line (static int square(int n)) when explaining name, parameter, and return type."
+  },
+  "analogy": "A method is like saving a phone number under a contact name — you don't have to remember or retype the number every time, you just call the name.",
+  "common_mistakes": [
+    "Forgetting to specify a return type, or using void when a value actually needs to come back.",
+    "Confusing defining a method with calling it — writing the method body doesn't run it."
+  ],
+  "what_to_avoid_saying": [
+    "Do not say a method 'runs automatically' once defined — it only executes when explicitly called."
+  ],
+  "beginner_takeaway": "If you're about to type the same logic a second time, that's the method calling your name, not the other way around.",
+  "retention_hook": "This program has the same three lines of math typed out three separate times. Here's the one-method fix.",
+  "visual_notes": [
+    "Show the three duplicated code blocks highlighted in matching colors before the refactor.",
+    "Label each part of the method signature (name / parameters / return type) as callouts on screen."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [],
+    "unresolved_conflicts": []
+  },
+  "audience_level": "beginner",
+  "target_duration_seconds": 45,
+  "teaching_style": "comparison-based",
+  "lesson_version": "1.0.0",
+  "generated_at": "2026-07-08T10:00:00Z",
+  "based_on_research_version": "1.0.0"
+}

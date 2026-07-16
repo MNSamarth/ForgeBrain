@@ -1,0 +1,51 @@
+{
+  "topic_id": "java-classes-and-objects",
+  "topic_title": "Classes and Objects",
+  "lesson_objective": "A class is a blueprint that defines what an object will have and do; an object is one specific thing built from that blueprint.",
+  "lesson_summary": "This lesson uses a cookie-cutter analogy to show the difference between defining a Car class once and creating three distinct Car objects from it, each with its own data but the same shape.",
+  "key_points": [
+    "A class defines the shape (fields and behavior) that every object built from it will have.",
+    "An object is one specific instance — its own copy of that shape, filled in with its own data.",
+    "The same class can produce many objects, each independent of the others."
+  ],
+  "step_by_step_explanation": [
+    "Open on the cookie-cutter analogy: one cutter, many cookies, each one separate.",
+    "Define a simple Car class with two fields: color and speed.",
+    "Create three Car objects from that one class, each with different color and speed values.",
+    "Change one Car object's speed and show the other two are completely unaffected.",
+    "Land on the takeaway: the class is the shape, the object is the thing — and they're not the same word for the same idea."
+  ],
+  "core_example": {
+    "description": "A minimal Car class instantiated three times with different field values, showing independence between instances.",
+    "code_sketch": "class Car {\n    String color;\n    int speed;\n}\n\nCar car1 = new Car();\ncar1.color = \"red\";\ncar1.speed = 60;\n\nCar car2 = new Car();\ncar2.color = \"blue\";\ncar2.speed = 45;",
+    "focus_note": "Highlight new Car() appearing twice — that's the moment two separate objects come from one class definition."
+  },
+  "analogy": "A class is like a cookie cutter, and an object is one cookie: the cutter defines the shape, but each cookie that comes out of it is its own separate cookie.",
+  "common_mistakes": [
+    "Confusing the class definition with an instance of it — writing 'class Car' doesn't create a car.",
+    "Putting unrelated behavior into one class instead of modeling it around what the class actually represents."
+  ],
+  "what_to_avoid_saying": [
+    "Do not say defining a class 'creates' an object — the class only becomes an object when new is used to instantiate it.",
+    "Do not say two objects from the same class 'share' their field values — each instance has its own independent copy."
+  ],
+  "beginner_takeaway": "A class is the shape; an object is the thing built from it — and you can build more than one.",
+  "retention_hook": "One cookie cutter. Three cookies. Same shape, three completely separate cookies — that's a class and its objects.",
+  "visual_notes": [
+    "Show the cookie-cutter visual dissolve into the Car class definition as the analogy transitions into code.",
+    "Show three Car objects on screen simultaneously with their distinct color/speed values labeled."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [
+      "Curriculum prerequisites list java-static-vs-instance alongside java-method-basics for this topic; this lesson assumes static-vs-instance has already been taught, per the topic selector's readiness gate, and does not re-explain it."
+    ],
+    "unresolved_conflicts": []
+  },
+  "audience_level": "beginner",
+  "target_duration_seconds": 50,
+  "teaching_style": "story-driven",
+  "lesson_version": "1.0.0",
+  "generated_at": "2026-07-16T11:30:00Z",
+  "based_on_research_version": "1.0.0"
+}

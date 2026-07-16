@@ -1,0 +1,50 @@
+{
+  "topic_id": "java-arrays-basics",
+  "topic_title": "Arrays Basics",
+  "topic_summary": "An array is Java's most basic way to hold a fixed-size, ordered group of values of the same type under one variable name, accessed by position.",
+  "learning_objective": "Declare, populate, and iterate over a fixed-size array.",
+  "difficulty": "beginner",
+  "audience_level": "beginner",
+  "target_reel_length_seconds": 45,
+  "prerequisites": [
+    { "topic_id": "java-for-loop", "title": "For Loops" },
+    { "topic_id": "java-variables-and-data-types", "title": "Variables and Data Types" }
+  ],
+  "common_misconceptions": [
+    "Assuming an array can grow or shrink after it's created, the way a general 'list' might.",
+    "Off-by-one indexing errors from forgetting arrays start at index 0.",
+    "Confusing array length (a field, .length) with String's length (a method, .length())."
+  ],
+  "core_concepts": [
+    "Open with the cost of not using an array: repeating the same variable declaration five times for five scores.",
+    "An array holds a fixed number of same-typed values under one name, indexed starting at 0.",
+    "Declare, size, and fill an array, then read a value back by index.",
+    "Index out of bounds isn't a warning — it crashes the program at that exact line, so bounds matter from the first example, not as an afterthought."
+  ],
+  "simple_analogy": "An array is like a single row of numbered lockers: one locker, one item, and if you ask for locker 10 when there are only 5, you don't get an empty locker back — the whole thing stops.",
+  "code_example_ideas": [
+    "Five student scores as five separate variables, then rewritten as one array — the stakes-first hook.",
+    "Fill an array in a loop and print it back.",
+    "Trigger ArrayIndexOutOfBoundsException immediately after establishing the locker analogy, not as a late add-on."
+  ],
+  "beginner_explanation": "An array lets you store a fixed number of values of the same type under a single variable name, each one accessible by its position, starting at 0. Instead of juggling five separate score variables, you get one array with five slots. The tradeoff is that the size is fixed once created, and asking for a position that doesn't exist crashes the program immediately — so knowing your array's bounds isn't optional, it's the whole deal.",
+  "advanced_notes": [
+    "Array length is a field (.length), not a method — unlike String's .length(). This wasn't called out clearly enough in the prior version and deserves a fast, explicit callout rather than being assumed obvious.",
+    "Arrays are objects in Java, even arrays of primitives, and are stored on the heap; that's deferred to Memory Management, not explained here."
+  ],
+  "related_topics": ["java-multidimensional-arrays", "java-collections-overview"],
+  "safety_notes": [
+    "Do not describe out-of-bounds array access as 'undefined behavior' — Java always throws a well-defined ArrayIndexOutOfBoundsException; that determinism is part of the point.",
+    "Do not say array size can be changed after creation — it cannot. That capability (ArrayList) is a separate, later topic, and conflating the two here would misinform this reel's audience."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [
+      "The prior version of this reel underperformed (performance_score 0.41, retention_score 0.33), reportedly due to slow pacing before the bounds-exception demo and a hook that didn't establish stakes early enough (see memory notes for java-arrays-basics). This brief reorders core_concepts to front-load the 'why you'd want this' problem and moves the exception demo earlier. Whether this actually improves retention can only be confirmed once the revised reel is posted and measured."
+    ],
+    "unresolved_conflicts": []
+  },
+  "sources": [],
+  "research_version": "1.0.0",
+  "generated_at": "2026-07-16T10:00:00Z"
+}

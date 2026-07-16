@@ -1,0 +1,49 @@
+{
+  "topic_id": "java-operators",
+  "topic_title": "Operators",
+  "topic_summary": "Operators are the symbols Java uses to compute, compare, and combine values — arithmetic like + and *, comparisons like == and <, and the precedence rules that decide which one runs first.",
+  "learning_objective": "Use arithmetic, relational, and logical operators correctly, including operator precedence.",
+  "difficulty": "beginner",
+  "audience_level": "beginner",
+  "target_reel_length_seconds": 40,
+  "prerequisites": [
+    { "topic_id": "java-variables-and-data-types", "title": "Variables and Data Types" }
+  ],
+  "common_misconceptions": [
+    "Confusing = (assignment) with == (comparison), especially inside a condition.",
+    "Expecting integer division to round to the nearest whole number instead of truncating toward zero.",
+    "Assuming operators always evaluate strictly left to right, ignoring precedence (multiplication before addition, etc.)."
+  ],
+  "core_concepts": [
+    "Arithmetic operators (+, -, *, /, %) work mostly like expected, except division has a trap.",
+    "Integer division truncates; you need at least one operand to be a double to get a decimal result.",
+    "= assigns a value; == compares values (and for objects, compares references, not content — a teaser, not the full explanation).",
+    "Operator precedence decides evaluation order — multiplication before addition, same as school math."
+  ],
+  "simple_analogy": "Operators are like the buttons on a calculator: mostly predictable, except Java's calculator quietly rounds down whenever you divide two whole numbers, instead of showing you the decimal.",
+  "code_example_ideas": [
+    "5 / 2 printed next to 5.0 / 2, side by side, showing 2 vs 2.5.",
+    "if (x = 5) style typo caught and explained as an assignment, not a comparison.",
+    "2 + 3 * 4 evaluated step by step to show precedence."
+  ],
+  "beginner_explanation": "Java's operators mostly behave the way you'd expect from math class: + adds, * multiplies, and multiplication happens before addition unless you use parentheses. The one place people get surprised is division — if both numbers are whole numbers (ints), Java throws away the decimal part instead of rounding, so 5 / 2 is 2, not 2.5. And it's easy to type = when you mean ==; one assigns, the other compares, and mixing them up compiles fine but does the wrong thing.",
+  "advanced_notes": [
+    "== on object references (including String) compares identity, not content — full treatment belongs to String Basics / String Immutability, not here; this brief should only tease it, not resolve it.",
+    "Operator precedence and associativity together determine evaluation order for chained operators of equal precedence (e.g. left-to-right for arithmetic); the full precedence table is reference material, not reel content."
+  ],
+  "related_topics": ["java-type-casting", "java-if-else"],
+  "safety_notes": [
+    "Do not say integer division 'rounds' — it truncates toward zero, which is not the same as rounding (e.g. -5 / 2 is -2, not -3).",
+    "Do not resolve the == vs .equals() distinction for objects in this reel — it's explicitly deferred to a later topic per the curriculum's next_topics, and a rushed partial explanation here risks being wrong or confusing."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [
+      "Whether to include the == typo-catching example (if (x = 5)) depends on final pacing at target_reel_length_seconds: 40; it may need to be cut in favor of the division-truncation example, which maps more directly to the curriculum's stated common_mistakes."
+    ],
+    "unresolved_conflicts": []
+  },
+  "sources": [],
+  "research_version": "1.0.0",
+  "generated_at": "2026-07-16T09:15:00Z"
+}

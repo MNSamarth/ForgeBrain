@@ -1,0 +1,7 @@
+# Research Examples
+
+Three worked topic briefs, each demonstrating a different input scenario the research stage has to handle. Every file here validates against [../research-output-schema.json](../research-output-schema.json) — none of the scenario context below is stored in the brief itself, since the schema is closed (`additionalProperties: false`); it's explained here instead.
+
+- **`java-variables-and-data-types.json`** — the standard case: a fresh topic, no prior memory, first time through research. Shows the baseline shape of a brief with no complications.
+- **`java-arrays-basics-revision.json`** — a revision case. In `memory/examples/sample-memory-state.json`, `java-arrays-basics` is flagged `needs_revisit` with a low `performance_score` (0.41) and a memory note citing slow pacing and a weak hook. This brief's `core_concepts` are deliberately reordered to front-load stakes and move the bounds-exception demo earlier, and `confidence_notes.flagged_uncertainties` names the prior feedback explicitly rather than silently incorporating it. Demonstrates `research-spec.md` Section 4, step 4 (incorporating memory context) in practice.
+- **`java-operators.json`** — continues the pipeline narrative from [../examples/sample-decisions.json](../examples/sample-decisions.json), where the topic selector's `next_topic` mode selected `java-operators` with a score of 0.76. This brief is what the research stage would hand to the Lesson Generator immediately after that decision — the standard end-to-end path from selection to research output.

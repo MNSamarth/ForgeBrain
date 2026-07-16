@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/lesson-output-schema.json",
+  "title": "ForgeBrain Lesson Blueprint",
+  "description": "The structured, single-concept lesson plan produced by the lesson stage from a research brief. Produced after research (see research-spec.md) and consumed by the Script Generator. See lesson-spec.md for the full process this schema supports.",
+  "type": "object",
+  "required": [
+    "topic_id",
+    "topic_title",
+    "lesson_objective",
+    "lesson_summary",
+    "key_points",
+    "step_by_step_explanation",
+    "core_example",
+    "analogy",
+    "common_mistakes",
+    "what_to_avoid_saying",
+    "beginner_takeaway",
+    "retention_hook",
+    "visual_notes",
+    "confidence_notes",
+    "audience_level",
+    "target_duration_seconds",
+    "teaching_style",
+    "lesson_version",
+    "generated_at",
+    "based_on_research_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "topic_id": {
+      "type": "string",
+      "description": "Matches the corresponding id in curriculum/java-roadmap.json and the topic_id of the research brief this lesson was built from."
+    },
+    "topic_title": {
+      "type": "string",
+      "description": "Matches the corresponding title in curriculum/java-roadmap.json."
+    },
+    "lesson_objective": {
+      "type": "string",
+      "description": "The one concept this lesson teaches. Everything else in the blueprint must serve this single objective — see lesson-spec.md Section 4."
+    },
+    "lesson_summary": {
+      "type": "string",
+      "description": "2-3 sentences on what the lesson covers and how it approaches it. A quick-scan overview before the step-by-step detail."
+    },
+    "key_points": {
+      "type": "array",
+      "description": "3-5 ordered points that build toward lesson_objective. Not a list of separate concepts — every point must serve the same objective.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "step_by_step_explanation": {
+      "type": "array",
+      "description": "The ordered teaching beats, 3-6 recommended. The walkthrough the Script Generator turns into narration, beat by beat.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "core_example": {
+      "$ref": "#/definitions/coreExample"
+    },
+    "analogy": {
+      "type": "string",
+      "description": "The one analogy this lesson uses, carried or refined from the research brief's simple_analogy."
+    },
+    "common_mistakes": {
+      "type": "array",
+      "description": "1-3 items. The first entry is the lesson's one memorable contrast or mistake; any additional entries are secondary/reference material, not necessarily spoken.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "what_to_avoid_saying": {
+      "type": "array",
+      "description": "Carried directly from the research brief's safety_notes. Statements that must not appear anywhere in the resulting script.",
+      "items": { "type": "string" }
+    },
+    "beginner_takeaway": {
+      "type": "string",
+      "description": "The one sentence a viewer should walk away remembering."
+    },
+    "retention_hook": {
+      "type": "string",
+      "description": "A committed opening line or hook concept for this specific lesson's angle, sharper than the research brief's general topic_summary."
+    },
+    "visual_notes": {
+      "type": "array",
+      "description": "1-3 short visual cue descriptions. The first entry is the lesson's one required visual cue; any additional entries are secondary/optional.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "confidence_notes": {
+      "$ref": "#/definitions/confidenceNotes"
+    },
+    "audience_level": {
+      "type": "string",
+      "enum": ["beginner", "intermediate", "advanced"],
+      "description": "Carried forward from the research brief unless explicitly overridden for this lesson."
+    },
+    "target_duration_seconds": {
+      "type": "integer",
+      "minimum": 15,
+      "maximum": 180,
+      "description": "Carried forward from the research brief's target_reel_length_seconds unless overridden. Bounds key_points and step_by_step_explanation length."
+    },
+    "teaching_style": {
+      "type": "string",
+      "enum": ["direct-explanation", "problem-first", "story-driven", "comparison-based", "myth-busting"],
+      "description": "The approach this lesson takes to its one concept. See lesson-spec.md Section 8 for how new styles get added."
+    },
+    "lesson_version": {
+      "type": "string",
+      "description": "Version of the lesson process/schema that produced this blueprint, for future caching and migration.",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this lesson blueprint was produced."
+    },
+    "based_on_research_version": {
+      "type": "string",
+      "description": "The research_version of the research brief this lesson was built from, for traceability."
+    }
+  },
+  "definitions": {
+    "coreExample": {
+      "type": "object",
+      "description": "The one chosen example for this lesson. Not final on-screen code — the Script Generator formats and times it.",
+      "required": ["description", "code_sketch", "focus_note"],
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "What the example demonstrates and why it was chosen over the other code_example_ideas the research brief offered."
+        },
+        "code_sketch": {
+          "type": "string",
+          "description": "A short, illustrative Java code sketch. Not production-formatted code — a rough shape for the Script Generator to refine."
+        },
+        "focus_note": {
+          "type": "string",
+          "description": "What part of the example should be emphasized on screen (e.g. a specific line), so the storyboard knows what to highlight."
+        }
+      }
+    },
+    "confidenceNotes": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Coarse self-assessment of how well-grounded this lesson's narrowing choices are."
+        },
+        "flagged_uncertainties": {
+          "type": "array",
+          "description": "Judgment calls the lesson stage had to make (e.g. narrowing between multiple strong research concepts), flagged for reviewer attention.",
+          "items": { "type": "string" }
+        },
+        "unresolved_conflicts": {
+          "type": "array",
+          "description": "Reserved for future multi-source or multi-version contradiction handling. Empty until relevant.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

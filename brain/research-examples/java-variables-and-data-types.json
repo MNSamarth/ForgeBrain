@@ -1,0 +1,49 @@
+{
+  "topic_id": "java-variables-and-data-types",
+  "topic_title": "Variables and Data Types",
+  "topic_summary": "Every variable in Java has a fixed, declared type — a number, some text, a true/false — and Java enforces that type the moment you try to use the variable, not later.",
+  "learning_objective": "Declare variables using Java's primitive types and understand the difference between primitives and objects.",
+  "difficulty": "beginner",
+  "audience_level": "beginner",
+  "target_reel_length_seconds": 45,
+  "prerequisites": [
+    { "topic_id": "java-jdk-jre-jvm", "title": "JDK vs JRE vs JVM" }
+  ],
+  "common_misconceptions": [
+    "Assuming Java infers a variable's type from its value, the way a dynamically typed language would, instead of requiring an explicit declared type.",
+    "Assuming a type mismatch (e.g. assigning text to an int) is caught at runtime, when Java actually catches it at compile time.",
+    "Not realizing whole-number arithmetic can silently overflow rather than error, producing a wrong result instead of a crash."
+  ],
+  "core_concepts": [
+    "Java is statically typed: you declare a variable's type up front, and Java holds you to it.",
+    "The 8 primitive types cover the basic building blocks (int, double, boolean, char, and others).",
+    "A variable is a named, typed storage location — not just a label you can repoint to any kind of value.",
+    "Objects (like String) are different from primitives; this reel only previews that distinction."
+  ],
+  "simple_analogy": "A variable is like a labeled storage bin at a warehouse: the label says the bin can only hold books, and the warehouse simply won't let you shelve a couch there — the type is locked in the moment the bin is created.",
+  "code_example_ideas": [
+    "Declare an int, a double, and a boolean side by side, printing each with its type.",
+    "A one-line compiler error caused by assigning a String literal to an int variable.",
+    "int overflow demonstrated by adding 1 to Integer.MAX_VALUE."
+  ],
+  "beginner_explanation": "In Java, every variable has to say what kind of value it will hold before you can use it — a number, some text, a true or false, and so on. Once you've picked a type, Java holds you to it: try to put the wrong kind of value in and the code won't even compile. That might feel strict, but it's what lets Java catch a whole category of bugs before your program ever runs.",
+  "advanced_notes": [
+    "Primitive types are stored directly wherever the variable lives (the stack, for locals); reference types like String store a reference to heap-allocated data. That distinction belongs to Memory Management (JVM and Performance level) — don't front-load it here.",
+    "int overflow wraps around silently (two's complement) rather than throwing; Java does not check for overflow on primitive arithmetic by default."
+  ],
+  "related_topics": ["java-operators", "java-type-casting"],
+  "safety_notes": [
+    "Do not say Java 'infers' the type of a normal variable declaration — that's only true for var (local variable type inference), a separate, later concept. Saying it here would misrepresent how int x = 5; actually works.",
+    "Do not say int overflow throws an exception — it silently wraps around. Stating otherwise is a factual error any Java developer would catch immediately."
+  ],
+  "confidence_notes": {
+    "overall_confidence": "high",
+    "flagged_uncertainties": [
+      "Whether to tease var (local variable type inference) at all was considered and deliberately left out rather than risk confusing viewers this early; flagged in case a future revision wants a short forward-reference."
+    ],
+    "unresolved_conflicts": []
+  },
+  "sources": [],
+  "research_version": "1.0.0",
+  "generated_at": "2026-06-27T09:00:00Z"
+}

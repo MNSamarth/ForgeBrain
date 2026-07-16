@@ -1,0 +1,222 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/memory-schema.json",
+  "title": "ForgeBrain Memory State",
+  "description": "Defines the shape of ForgeBrain's memory state: what has been taught, what is queued, and how content has performed. Read and written by the Curriculum Engine and Topic Memory components described in docs/ARCHITECTURE.md.",
+  "type": "object",
+  "required": ["memory_version", "language", "last_updated", "topics", "global_stats"],
+  "additionalProperties": false,
+  "properties": {
+    "memory_version": {
+      "type": "string",
+      "description": "Version of this memory schema, so future code can detect and migrate older memory files.",
+      "examples": ["1.0.0"]
+    },
+    "language": {
+      "type": "string",
+      "description": "Content domain this memory state tracks. Fixed to java for Phase 1.",
+      "enum": ["java"]
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the last write to this memory state."
+    },
+    "current_topic_id": {
+      "type": ["string", "null"],
+      "description": "topic_id of the topic currently being worked on through the pipeline, if any. Null when nothing is in progress."
+    },
+    "queue": {
+      "type": "array",
+      "description": "Ordered list of topics selected to be taught next, most immediate first.",
+      "items": { "$ref": "#/definitions/queueEntry" }
+    },
+    "recently_used_hooks": {
+      "type": "array",
+      "description": "Recently used opening hooks/lines, tracked independently of topic so a revisited topic doesn't repeat the exact same opening.",
+      "items": { "$ref": "#/definitions/usedContentFragment" }
+    },
+    "recently_used_examples": {
+      "type": "array",
+      "description": "Recently used code examples or teaching examples, tracked so a revisited topic doesn't repeat the exact same example.",
+      "items": { "$ref": "#/definitions/usedContentFragment" }
+    },
+    "topics": {
+      "type": "object",
+      "description": "Map of topic_id to its topic record. Keyed for direct O(1) lookup by code, mirroring topic ids used in curriculum/java-roadmap.json.",
+      "additionalProperties": { "$ref": "#/definitions/topicRecord" }
+    },
+    "global_stats": {
+      "$ref": "#/definitions/globalStats"
+    }
+  },
+  "definitions": {
+    "queueEntry": {
+      "type": "object",
+      "required": ["topic_id", "priority"],
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "description": "References a topic id from curriculum/java-roadmap.json."
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "normal", "high"],
+          "description": "Manual or system-assigned priority influencing queue ordering."
+        },
+        "queued_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this topic was added to the queue."
+        },
+        "reason": {
+          "type": ["string", "null"],
+          "description": "Optional short note on why this topic was queued (e.g. 'next in prerequisite chain', 'revisit after low retention')."
+        }
+      }
+    },
+    "usedContentFragment": {
+      "type": "object",
+      "required": ["topic_id", "content", "used_at"],
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "description": "Topic the hook or example was used for."
+        },
+        "content": {
+          "type": "string",
+          "description": "The hook line or example description that was used."
+        },
+        "used_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "audienceResponse": {
+      "type": "object",
+      "description": "Performance signals sourced from analytics, once available. All fields default to null until Phase 1's analytics integration exists.",
+      "additionalProperties": false,
+      "properties": {
+        "view_count": { "type": ["integer", "null"], "minimum": 0 },
+        "watch_time_seconds": { "type": ["number", "null"], "minimum": 0 },
+        "average_retention_percent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "likes": { "type": ["integer", "null"], "minimum": 0 },
+        "comments": { "type": ["integer", "null"], "minimum": 0 },
+        "shares": { "type": ["integer", "null"], "minimum": 0 },
+        "saves": { "type": ["integer", "null"], "minimum": 0 },
+        "follower_conversion": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "topicRecord": {
+      "type": "object",
+      "description": "Tracked state for a single curriculum topic.",
+      "required": ["topic_id", "title", "status", "difficulty", "times_used", "priority"],
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "description": "Matches the corresponding id in curriculum/java-roadmap.json."
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["not_covered", "queued", "in_progress", "posted", "needs_revisit", "avoided"],
+          "description": "Current lifecycle state of this topic within the memory system."
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": ["beginner", "intermediate", "advanced"],
+          "description": "Mirrors the difficulty tier from the curriculum roadmap."
+        },
+        "times_used": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many times this topic has been produced into a reel."
+        },
+        "last_used_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Last time this topic entered the production pipeline, regardless of publish status."
+        },
+        "last_posted_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Last time a reel for this topic was actually published."
+        },
+        "revision_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many times this topic's content has been revised after review or after underperforming."
+        },
+        "performance_score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Normalized 0-1 score summarizing how well this topic's reel(s) performed. Null until at least one reel has data."
+        },
+        "retention_score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Normalized 0-1 score summarizing average viewer retention for this topic's reel(s)."
+        },
+        "audience_response": {
+          "$ref": "#/definitions/audienceResponse"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "normal", "high"],
+          "description": "Influences topic selection ordering independent of queue position."
+        },
+        "avoid_until": {
+          "type": ["string", "null"],
+          "format": "date",
+          "description": "If set, this topic is excluded from selection until this date has passed. Used for cooldown after recent use or after underperformance."
+        },
+        "related_topics": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "topic_ids of related topics, mirroring curriculum related_topics once populated."
+        },
+        "notes": {
+          "type": ["string", "null"],
+          "description": "Free-text notes, e.g. why a topic underperformed or what to change on revision."
+        },
+        "hooks_used": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Convenience list of hook lines used for this topic. Duplicates entries also tracked globally in recently_used_hooks."
+        },
+        "examples_used": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Convenience list of examples used for this topic. Duplicates entries also tracked globally in recently_used_examples."
+        }
+      }
+    },
+    "globalStats": {
+      "type": "object",
+      "description": "Aggregate state that doesn't belong to any single topic.",
+      "additionalProperties": false,
+      "required": ["total_reels_posted"],
+      "properties": {
+        "total_reels_posted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_posted_topic_id": {
+          "type": ["string", "null"]
+        },
+        "last_posted_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

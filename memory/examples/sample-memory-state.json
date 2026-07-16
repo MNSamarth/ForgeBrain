@@ -1,0 +1,205 @@
+{
+  "memory_version": "1.0.0",
+  "language": "java",
+  "last_updated": "2026-07-16T09:00:00Z",
+  "current_topic_id": "java-string-basics",
+  "queue": [
+    {
+      "topic_id": "java-classes-and-objects",
+      "priority": "normal",
+      "queued_at": "2026-07-14T12:00:00Z",
+      "reason": "Next in prerequisite chain after arrays and strings arc"
+    },
+    {
+      "topic_id": "java-arrays-basics",
+      "priority": "high",
+      "queued_at": "2026-07-12T09:30:00Z",
+      "reason": "Revisit after low retention score; script flagged for tighter pacing"
+    }
+  ],
+  "recently_used_hooks": [
+    { "topic_id": "java-method-basics", "content": "You've written this same block of code three times. Here's how you never do that again.", "used_at": "2026-07-10T18:00:00Z" },
+    { "topic_id": "java-for-loop", "content": "This one loop replaces ten lines of copy-pasted code.", "used_at": "2026-07-05T18:00:00Z" },
+    { "topic_id": "java-variables-and-data-types", "content": "Java won't let you put a word where a number goes. Here's why that's a feature.", "used_at": "2026-06-28T18:00:00Z" }
+  ],
+  "recently_used_examples": [
+    { "topic_id": "java-method-basics", "content": "Extracting repeated code into one method", "used_at": "2026-07-10T18:00:00Z" },
+    { "topic_id": "java-for-loop", "content": "Classic for loop vs for-each side by side", "used_at": "2026-07-05T18:00:00Z" },
+    { "topic_id": "java-variables-and-data-types", "content": "The 8 primitive types in one visual", "used_at": "2026-06-28T18:00:00Z" }
+  ],
+  "topics": {
+    "java-variables-and-data-types": {
+      "topic_id": "java-variables-and-data-types",
+      "title": "Variables and Data Types",
+      "status": "posted",
+      "difficulty": "beginner",
+      "times_used": 1,
+      "last_used_at": "2026-06-28T15:00:00Z",
+      "last_posted_at": "2026-06-28T18:00:00Z",
+      "revision_count": 0,
+      "performance_score": 0.78,
+      "retention_score": 0.71,
+      "audience_response": {
+        "view_count": 15400,
+        "watch_time_seconds": 141800,
+        "average_retention_percent": 71.0,
+        "likes": 980,
+        "comments": 42,
+        "shares": 65,
+        "saves": 210,
+        "follower_conversion": 38
+      },
+      "priority": "normal",
+      "avoid_until": null,
+      "related_topics": ["java-operators", "java-type-casting"],
+      "notes": "Strong hook with a concrete comparison landed well. Good template for future foundations topics.",
+      "hooks_used": ["Java won't let you put a word where a number goes. Here's why that's a feature."],
+      "examples_used": ["The 8 primitive types in one visual"]
+    },
+    "java-for-loop": {
+      "topic_id": "java-for-loop",
+      "title": "For Loops",
+      "status": "posted",
+      "difficulty": "beginner",
+      "times_used": 1,
+      "last_used_at": "2026-07-05T15:00:00Z",
+      "last_posted_at": "2026-07-05T18:00:00Z",
+      "revision_count": 0,
+      "performance_score": 0.64,
+      "retention_score": 0.55,
+      "audience_response": {
+        "view_count": 11200,
+        "watch_time_seconds": 61600,
+        "average_retention_percent": 55.0,
+        "likes": 640,
+        "comments": 18,
+        "shares": 30,
+        "saves": 95,
+        "follower_conversion": 12
+      },
+      "priority": "normal",
+      "avoid_until": null,
+      "related_topics": ["java-while-loop", "java-arrays-basics"],
+      "notes": "Retention dropped in the middle third during the for-each explanation. Consider tighter pacing next revision.",
+      "hooks_used": ["This one loop replaces ten lines of copy-pasted code."],
+      "examples_used": ["Classic for loop vs for-each side by side"]
+    },
+    "java-method-basics": {
+      "topic_id": "java-method-basics",
+      "title": "Method Basics",
+      "status": "posted",
+      "difficulty": "beginner",
+      "times_used": 1,
+      "last_used_at": "2026-07-10T15:00:00Z",
+      "last_posted_at": "2026-07-10T18:00:00Z",
+      "revision_count": 0,
+      "performance_score": 0.88,
+      "retention_score": 0.81,
+      "audience_response": {
+        "view_count": 22300,
+        "watch_time_seconds": 248900,
+        "average_retention_percent": 81.0,
+        "likes": 1850,
+        "comments": 76,
+        "shares": 140,
+        "saves": 410,
+        "follower_conversion": 95
+      },
+      "priority": "normal",
+      "avoid_until": null,
+      "related_topics": ["java-parameters-and-return", "java-variable-scope"],
+      "notes": "Best-performing reel to date. The 'extracting duplicated code' framing resonated strongly; reuse this angle for other refactoring-flavored topics.",
+      "hooks_used": ["You've written this same block of code three times. Here's how you never do that again."],
+      "examples_used": ["Extracting repeated code into one method"]
+    },
+    "java-arrays-basics": {
+      "topic_id": "java-arrays-basics",
+      "title": "Arrays Basics",
+      "status": "needs_revisit",
+      "difficulty": "beginner",
+      "times_used": 1,
+      "last_used_at": "2026-06-20T15:00:00Z",
+      "last_posted_at": "2026-06-20T18:00:00Z",
+      "revision_count": 0,
+      "performance_score": 0.41,
+      "retention_score": 0.33,
+      "audience_response": {
+        "view_count": 8100,
+        "watch_time_seconds": 26730,
+        "average_retention_percent": 33.0,
+        "likes": 210,
+        "comments": 9,
+        "shares": 6,
+        "saves": 40,
+        "follower_conversion": 3
+      },
+      "priority": "high",
+      "avoid_until": "2026-08-01",
+      "related_topics": ["java-multidimensional-arrays", "java-collections-overview"],
+      "notes": "Underperformed; pacing too slow before the ArrayIndexOutOfBoundsException demo, and the hook didn't establish stakes early enough. Flagged for a rewrite before reuse.",
+      "hooks_used": ["Arrays are Java's first data structure. Here's how they actually work in memory."],
+      "examples_used": ["Fill and print an array with a for loop"]
+    },
+    "java-string-basics": {
+      "topic_id": "java-string-basics",
+      "title": "String Basics",
+      "status": "in_progress",
+      "difficulty": "beginner",
+      "times_used": 0,
+      "last_used_at": "2026-07-16T09:00:00Z",
+      "last_posted_at": null,
+      "revision_count": 0,
+      "performance_score": null,
+      "retention_score": null,
+      "audience_response": {
+        "view_count": null,
+        "watch_time_seconds": null,
+        "average_retention_percent": null,
+        "likes": null,
+        "comments": null,
+        "shares": null,
+        "saves": null,
+        "follower_conversion": null
+      },
+      "priority": "normal",
+      "avoid_until": null,
+      "related_topics": ["java-string-methods"],
+      "notes": "Currently being scripted; research and lesson stages complete.",
+      "hooks_used": [],
+      "examples_used": []
+    },
+    "java-classes-and-objects": {
+      "topic_id": "java-classes-and-objects",
+      "title": "Classes and Objects",
+      "status": "queued",
+      "difficulty": "beginner",
+      "times_used": 0,
+      "last_used_at": null,
+      "last_posted_at": null,
+      "revision_count": 0,
+      "performance_score": null,
+      "retention_score": null,
+      "audience_response": {
+        "view_count": null,
+        "watch_time_seconds": null,
+        "average_retention_percent": null,
+        "likes": null,
+        "comments": null,
+        "shares": null,
+        "saves": null,
+        "follower_conversion": null
+      },
+      "priority": "normal",
+      "avoid_until": null,
+      "related_topics": ["java-constructors", "java-encapsulation"],
+      "notes": "Next up after string-basics; gating topic for the OOP arc.",
+      "hooks_used": [],
+      "examples_used": []
+    }
+  },
+  "global_stats": {
+    "total_reels_posted": 4,
+    "last_posted_topic_id": "java-method-basics",
+    "last_posted_at": "2026-07-10T18:00:00Z"
+  }
+}

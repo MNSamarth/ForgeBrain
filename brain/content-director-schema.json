@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/content-director-schema.json",
+  "title": "ForgeBrain Content Strategy",
+  "description": "The structured content strategy produced by the Content Director from a lesson blueprint. Decides HOW a lesson is presented (hook, pacing, visuals, emotional arc) without writing any dialogue. Produced after the lesson stage (see lesson-spec.md) and consumed directly by the Script Generator. See content-director-spec.md for the full decision process this schema supports.",
+  "type": "object",
+  "required": [
+    "topic_id",
+    "topic_title",
+    "hook_type",
+    "hook_reason",
+    "teaching_style",
+    "teaching_style_reason",
+    "emotional_goal",
+    "emotional_goal_reason",
+    "pacing",
+    "pacing_reason",
+    "scene_pacing",
+    "visual_style",
+    "supporting_visuals",
+    "visual_style_reason",
+    "code_style",
+    "code_style_reason",
+    "cta_style",
+    "cta_reason",
+    "retention_goal",
+    "estimated_watch_time",
+    "confidence",
+    "target_duration_seconds",
+    "content_director_version",
+    "generated_at",
+    "based_on_lesson_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "topic_id": {
+      "type": "string",
+      "description": "Matches the corresponding id in curriculum/java-roadmap.json and the topic_id of the lesson blueprint this strategy was built from."
+    },
+    "topic_title": {
+      "type": "string",
+      "description": "Matches the corresponding title in curriculum/java-roadmap.json."
+    },
+    "hook_type": {
+      "type": "string",
+      "enum": [
+        "beginner-mistake",
+        "myth",
+        "question",
+        "challenge",
+        "interview-question",
+        "before-vs-after",
+        "hidden-feature",
+        "common-bug",
+        "productivity-tip",
+        "performance-comparison"
+      ],
+      "description": "The hook category selected for this reel's opening. See content-director-spec.md Section 5.1 for selection signals."
+    },
+    "hook_reason": {
+      "type": "string",
+      "description": "Which specific signal in the lesson (e.g. common_mistakes[0], core_example contrast, topic's interview relevance) drove this hook choice. Must name the signal, not just restate the hook type."
+    },
+    "teaching_style": {
+      "type": "string",
+      "enum": ["explain-first", "code-first", "analogy-first", "visual-first", "question-first"],
+      "description": "The opening posture for this reel. Distinct from the lesson blueprint's own teaching_style — see content-director-spec.md Section 3."
+    },
+    "teaching_style_reason": {
+      "type": "string",
+      "description": "Why this specific lesson's content justified this opening posture, referencing the lesson's own teaching_style as a starting signal where relevant."
+    },
+    "emotional_goal": {
+      "type": "string",
+      "enum": ["surprise", "curiosity", "confidence", "relief", "satisfaction"],
+      "description": "The feeling this reel is engineered to produce by its final beat, chosen to match the hook."
+    },
+    "emotional_goal_reason": {
+      "type": "string",
+      "description": "Why this emotional goal follows from the chosen hook and content."
+    },
+    "pacing": {
+      "type": "string",
+      "enum": ["fast", "medium", "slow"],
+      "description": "The overall pacing tier. See content-director-spec.md Section 5.5 for scene-count and duration guidance per tier."
+    },
+    "pacing_reason": {
+      "type": "string",
+      "description": "Why this pacing tier fits this lesson's content and hook."
+    },
+    "scene_pacing": {
+      "type": "array",
+      "description": "Ordered scene breakdown with approximate durations. May resequence the lesson's step_by_step_explanation for storytelling effect, but must still cover every concept the lesson commits to. Should sum to slightly less than target_duration_seconds.",
+      "minItems": 2,
+      "items": { "$ref": "#/definitions/scene" }
+    },
+    "visual_style": {
+      "type": "string",
+      "enum": ["full-screen-typography", "code-animation", "diagram", "cursor-movement", "highlight-animation", "split-screen", "timeline"],
+      "description": "The primary visual technique for this reel."
+    },
+    "supporting_visuals": {
+      "type": "array",
+      "description": "0-2 secondary visual cues, supporting the primary visual_style.",
+      "items": { "type": "string" }
+    },
+    "visual_style_reason": {
+      "type": "string",
+      "description": "Why this visual technique best serves the lesson's core_example.focus_note or analogy."
+    },
+    "code_style": {
+      "type": "string",
+      "enum": ["minimal-example", "comparison-example", "bug-example", "optimization-example", "interview-example"],
+      "description": "How the lesson's already-chosen core_example should be framed. Does not choose a different example than the lesson committed to."
+    },
+    "code_style_reason": {
+      "type": "string",
+      "description": "Why this framing fits the lesson's core_example.description."
+    },
+    "cta_style": {
+      "type": "string",
+      "enum": ["follow", "save", "comment", "try-this-yourself", "next-lesson-teaser"],
+      "description": "The call-to-action category for this reel's closing beat."
+    },
+    "cta_reason": {
+      "type": "string",
+      "description": "Why this CTA matches the reel's emotional payoff."
+    },
+    "retention_goal": {
+      "type": "string",
+      "description": "A single sentence describing the specific mechanism keeping a viewer watching to the end. Design intent for the Reviewer to check the script against, not a metric."
+    },
+    "estimated_watch_time": {
+      "type": "integer",
+      "minimum": 10,
+      "description": "Plain-language prediction, in seconds, of how long an average viewer is expected to stay. Typically at or slightly below target_duration_seconds."
+    },
+    "confidence": {
+      "$ref": "#/definitions/confidence"
+    },
+    "target_duration_seconds": {
+      "type": "integer",
+      "minimum": 15,
+      "maximum": 180,
+      "description": "Carried from the lesson blueprint's target_duration_seconds unless explicitly overridden."
+    },
+    "content_director_version": {
+      "type": "string",
+      "description": "Version of the Content Director process/schema that produced this strategy, for future caching and migration.",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this content strategy was produced."
+    },
+    "based_on_lesson_version": {
+      "type": "string",
+      "description": "The lesson_version of the lesson blueprint this strategy was built from, for traceability."
+    }
+  },
+  "definitions": {
+    "scene": {
+      "type": "object",
+      "required": ["scene", "duration_seconds"],
+      "additionalProperties": false,
+      "properties": {
+        "scene": {
+          "type": "string",
+          "description": "Short description of this beat's content and role (e.g. 'cold-open crash', 'rewind to context')."
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Approximate duration for this scene. Not frame-accurate — the Script Generator has final say on actual timing."
+        }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Coarse self-assessment of how well-grounded this strategy's choices are."
+        },
+        "flagged_uncertainties": {
+          "type": "array",
+          "description": "Close calls between strategies, or strategy changes made in response to a prior revision, flagged for reviewer attention.",
+          "items": { "type": "string" }
+        },
+        "unresolved_conflicts": {
+          "type": "array",
+          "description": "Reserved for future analytics-informed contradictions (e.g. two strategy signals disagreeing once strategy_performance data exists). Empty until relevant.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

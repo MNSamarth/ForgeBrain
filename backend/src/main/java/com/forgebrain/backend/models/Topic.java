@@ -15,6 +15,8 @@ public record Topic(
         List<String> prerequisites,
         List<String> nextTopics,
         String learningObjective,
+        List<String> commonMistakes,
+        List<String> exampleIdeas,
         Status status
 ) {
 

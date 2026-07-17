@@ -1,6 +1,7 @@
 package com.forgebrain.backend.services;
 
 import com.forgebrain.backend.models.MemoryState;
+import com.forgebrain.backend.models.Topic;
 import java.util.List;
 
 /**
@@ -30,4 +31,25 @@ public interface MemoryService {
      * Updates the global queue, replacing it in full.
      */
     void updateQueue(List<MemoryState.QueueEntry> queue);
+
+    /**
+     * Records a hook line as used, so a future revisit of this or a related topic can avoid
+     * repeating it verbatim. See memory/memory-schema.json's {@code recently_used_hooks}.
+     */
+    void recordUsedHook(String topicId, String hookContent);
+
+    /**
+     * Records a code/teaching example as used, mirroring {@link #recordUsedHook} for
+     * {@code recently_used_examples}.
+     */
+    void recordUsedExample(String topicId, String exampleContent);
+
+    /**
+     * Marks a topic as currently in progress: creates or updates its record with an
+     * incremented {@code timesUsed} and a fresh {@code lastUsedAt}, and sets it as {@code
+     * currentTopicId}. Called immediately after topic selection, before any content is
+     * generated, so a repeated run can't select the same topic twice (see
+     * brain/topic-selector-spec.md's not-in-progress gate).
+     */
+    void markTopicInProgress(String topicId, String title, Topic.Difficulty difficulty);
 }

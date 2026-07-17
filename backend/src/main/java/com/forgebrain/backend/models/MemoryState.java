@@ -17,11 +17,21 @@ public record MemoryState(
         Instant lastUpdated,
         String currentTopicId,
         List<QueueEntry> queue,
+        List<UsedContentFragment> recentlyUsedHooks,
+        List<UsedContentFragment> recentlyUsedExamples,
         Map<String, TopicRecord> topics,
         GlobalStats globalStats
 ) {
 
     public record QueueEntry(String topicId, Priority priority, Instant queuedAt, String reason) {
+    }
+
+    /**
+     * A previously used hook line or code example, tracked independently of topic so a
+     * revisited topic doesn't repeat the exact same opening or example. Mirrors
+     * memory-schema.json's {@code usedContentFragment} definition.
+     */
+    public record UsedContentFragment(String topicId, String content, Instant usedAt) {
     }
 
     public record TopicRecord(

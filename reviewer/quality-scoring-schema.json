@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/quality-scoring-schema.json",
+  "title": "ForgeBrain Quality Score",
+  "description": "The structured, multi-dimensional quality evaluation of a finished VideoPackage, consumed by the Reviewer as one input to its approval decision. See quality-scoring-spec.md for the full process this schema supports.",
+  "type": "object",
+  "required": [
+    "score_id",
+    "topic_id",
+    "based_on_video_package_id",
+    "dimensions",
+    "overall_score",
+    "scoring_weights_used",
+    "dimension_notes",
+    "scoring_version",
+    "generated_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "score_id": {
+      "type": "string",
+      "description": "Unique identifier for this quality score, referenced by ReviewResult.based_on_quality_score_id."
+    },
+    "topic_id": { "type": "string" },
+    "based_on_video_package_id": {
+      "type": "string",
+      "description": "The package_id of the VideoPackage this score evaluates."
+    },
+    "dimensions": {
+      "$ref": "#/definitions/scoreDimensions"
+    },
+    "overall_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Weighted average of dimensions, using scoring_weights_used. Not a fixed formula in this schema — see quality-scoring-spec.md Section 3."
+    },
+    "scoring_weights_used": {
+      "type": "object",
+      "description": "The weight applied to each dimension when computing overall_score, recorded for auditability.",
+      "required": ["technical_accuracy", "pacing_fit", "hook_strength", "educational_clarity", "production_polish", "brand_consistency"],
+      "additionalProperties": false,
+      "properties": {
+        "technical_accuracy": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pacing_fit": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hook_strength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "educational_clarity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "production_polish": { "type": "number", "minimum": 0, "maximum": 1 },
+        "brand_consistency": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "dimension_notes": {
+      "type": "array",
+      "description": "Short rationale entries, required for any dimension scoring below a review-configured threshold, optional otherwise.",
+      "items": { "$ref": "#/definitions/dimensionNote" }
+    },
+    "scoring_version": {
+      "type": "string",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "definitions": {
+    "scoreDimensions": {
+      "type": "object",
+      "required": ["technical_accuracy", "pacing_fit", "hook_strength", "educational_clarity", "production_polish", "brand_consistency"],
+      "additionalProperties": false,
+      "properties": {
+        "technical_accuracy": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pacing_fit": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hook_strength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "educational_clarity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "production_polish": { "type": "number", "minimum": 0, "maximum": 1 },
+        "brand_consistency": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "dimensionNote": {
+      "type": "object",
+      "required": ["dimension", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": ["technical_accuracy", "pacing_fit", "hook_strength", "educational_clarity", "production_polish", "brand_consistency"]
+        },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

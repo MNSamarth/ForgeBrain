@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/reviewer-schema.json",
+  "title": "ForgeBrain Review Result",
+  "description": "The structured, final-gate decision produced by the Reviewer, combining hard safety gates and scored quality judgment. Produced after the Renderer and Quality Scoring (see reviewer-spec.md) and consumed by Publishing Package preparation, or by the pipeline orchestrator to trigger a revision.",
+  "type": "object",
+  "required": [
+    "review_id",
+    "topic_id",
+    "based_on_video_package_id",
+    "based_on_quality_score_id",
+    "verdict",
+    "hard_gate_violations",
+    "issues",
+    "confidence_notes",
+    "reviewer_version",
+    "reviewed_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "review_id": {
+      "type": "string",
+      "description": "Unique identifier for this review."
+    },
+    "topic_id": { "type": "string" },
+    "based_on_video_package_id": {
+      "type": "string",
+      "description": "The package_id of the VideoPackage this review evaluated."
+    },
+    "based_on_quality_score_id": {
+      "type": "string",
+      "description": "Matches the score_id of the QualityScore this decision weighed."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["approved", "needs_revision", "rejected"],
+      "description": "See reviewer-spec.md Section 4."
+    },
+    "hard_gate_violations": {
+      "type": "array",
+      "description": "Specific lesson.safety_notes / script.what_to_avoid_saying entries the script actually violated. Non-empty here forces verdict: rejected.",
+      "items": { "type": "string" }
+    },
+    "issues": {
+      "type": "array",
+      "description": "Every issue found, whether it drove the verdict or is noted for future attention.",
+      "items": { "$ref": "#/definitions/reviewIssue" }
+    },
+    "confidence_notes": {
+      "$ref": "#/definitions/confidenceNotes"
+    },
+    "reviewer_version": {
+      "type": "string",
+      "examples": ["1.0.0"]
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "definitions": {
+    "reviewIssue": {
+      "type": "object",
+      "required": ["severity", "description", "suggested_stage_to_revisit"],
+      "additionalProperties": false,
+      "properties": {
+        "severity": {
+          "type": "string",
+          "enum": ["blocking", "major", "minor"],
+          "description": "blocking issues correspond to hard gate violations; major/minor correspond to quality score shortfalls."
+        },
+        "description": {
+          "type": "string"
+        },
+        "suggested_stage_to_revisit": {
+          "type": "string",
+          "enum": [
+            "topic_selection",
+            "research",
+            "lesson",
+            "content_director",
+            "script",
+            "storyboard",
+            "voice",
+            "subtitles",
+            "assets",
+            "renderer",
+            "none"
+          ],
+          "description": "Which pipeline stage's output is the likely place to fix this issue, using the stage names from docs/PIPELINE.md. 'none' for issues noted but not requiring rework."
+        }
+      }
+    },
+    "confidenceNotes": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+        "flagged_uncertainties": { "type": "array", "items": { "type": "string" } },
+        "unresolved_conflicts": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

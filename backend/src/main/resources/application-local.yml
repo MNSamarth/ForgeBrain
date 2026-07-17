@@ -1,0 +1,7 @@
+# Local development overrides. No real credentials or project identifiers belong here —
+# see docs/CONFIGURATION.md Section 5. This file only demonstrates that environment-specific
+# values are meant to differ per profile, not per code branch.
+
+forgebrain:
+  application:
+    environment: local

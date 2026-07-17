@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/topic-selector-schema.json",
+  "title": "ForgeBrain Topic Selection Decision",
+  "description": "The structured decision object produced by the topic selector. Formalizes the decision object described in topic-selector-spec.md Section 6 as a JSON Schema, closing the one gap in brain/ where every other pipeline stage already had a dedicated output schema (research, lesson, content strategy, script, storyboard). Produced by the Curriculum Engine / Topic Memory pairing described in docs/ARCHITECTURE.md and consumed by the research stage as its selected_topic input.",
+  "type": "object",
+  "required": [
+    "mode",
+    "selected_topic_id",
+    "selected_topic_title",
+    "reason",
+    "score",
+    "candidate_topics",
+    "rejected_topics",
+    "blocked_by_prerequisite",
+    "blocked_by_recent_use",
+    "needs_revision",
+    "selection_timestamp"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["next_topic", "revision_topic", "high_performance_topic", "gap_filler_topic"],
+      "description": "Which decision mode produced this result. See topic-selector-spec.md Section 4."
+    },
+    "selected_topic_id": {
+      "type": ["string", "null"],
+      "description": "The chosen topic's id, matching an entry in curriculum/java-roadmap.json, or null if no eligible candidate existed. A null selection is a valid, complete answer — see topic-selector-spec.md Section 8."
+    },
+    "selected_topic_title": {
+      "type": ["string", "null"],
+      "description": "The chosen topic's title, for readability. Null exactly when selected_topic_id is null."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Plain-language explanation of why this topic won, or why nothing qualified. Must be specific enough to audit the decision without re-running the scoring model."
+    },
+    "score": {
+      "type": ["number", "null"],
+      "description": "The selected topic's final weighted score from topic-ranking.json. Null exactly when selected_topic_id is null."
+    },
+    "candidate_topics": {
+      "type": "array",
+      "description": "Every topic that passed all gates for this mode, each with its score and per-factor breakdown.",
+      "items": { "$ref": "#/definitions/scoredCandidate" }
+    },
+    "rejected_topics": {
+      "type": "array",
+      "description": "Every topic considered and excluded, each with a short reason.",
+      "items": { "$ref": "#/definitions/rejectedTopic" }
+    },
+    "blocked_by_prerequisite": {
+      "type": "array",
+      "description": "topic_ids excluded specifically because a prerequisite had not reached posted status, even if the topic was sitting in memory.queue.",
+      "items": { "type": "string" }
+    },
+    "blocked_by_recent_use": {
+      "type": "array",
+      "description": "topic_ids excluded specifically because of an active avoid_until cooldown.",
+      "items": { "type": "string" }
+    },
+    "needs_revision": {
+      "type": "array",
+      "description": "topic_ids currently at memory status needs_revisit, surfaced for visibility regardless of which mode this run used.",
+      "items": { "type": "string" }
+    },
+    "selection_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this decision was computed. Explicit rather than implicit 'now' so decisions are reproducible."
+    }
+  },
+  "definitions": {
+    "scoredCandidate": {
+      "type": "object",
+      "required": ["topic_id", "title", "score", "factors"],
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": { "type": "string" },
+        "title": { "type": "string" },
+        "score": { "type": "number" },
+        "factors": {
+          "type": "object",
+          "description": "Per-factor values from topic-ranking.json, present even for factors this mode weights at 0.0, for full transparency.",
+          "required": [
+            "educational_sequence_fit",
+            "novelty_score",
+            "repetition_penalty",
+            "performance_boost",
+            "revision_priority",
+            "audience_demand_signal"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "educational_sequence_fit": { "type": "number", "minimum": 0, "maximum": 1 },
+            "novelty_score": { "type": "number", "minimum": 0, "maximum": 1 },
+            "repetition_penalty": { "type": "number", "minimum": 0, "maximum": 1 },
+            "performance_boost": { "type": "number", "minimum": 0, "maximum": 1 },
+            "revision_priority": { "type": "number", "minimum": 0, "maximum": 1 },
+            "audience_demand_signal": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "rejectedTopic": {
+      "type": "object",
+      "required": ["topic_id", "title", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "topic_id": { "type": "string" },
+        "title": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

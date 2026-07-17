@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/render-schema.json",
+  "title": "ForgeBrain Render Job and Video Package",
+  "description": "The structured job-tracking object (RenderJob) and the resulting finished-video artifact (VideoPackage) produced by the Renderer. Produced after Asset Management and consumed by the Reviewer. See render-spec.md for the full process this schema supports. This schema defines contracts only — no rendering/encoding logic.",
+  "definitions": {
+    "renderJob": {
+      "type": "object",
+      "required": [
+        "job_id",
+        "topic_id",
+        "status",
+        "progress_percent",
+        "submitted_at",
+        "started_at",
+        "completed_at",
+        "error_message",
+        "failed_at_scene_id",
+        "based_on_storyboard_version",
+        "based_on_voice_version",
+        "based_on_subtitle_version",
+        "based_on_asset_manifest_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "description": "Unique identifier for this render job."
+        },
+        "topic_id": {
+          "type": "string",
+          "description": "Matches the topic_id of the storyboard/voice/subtitle/asset inputs this job renders."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["queued", "rendering", "completed", "failed"]
+        },
+        "progress_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "submitted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "started_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Null until status transitions past queued."
+        },
+        "completed_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Null until status is completed or failed."
+        },
+        "error_message": {
+          "type": ["string", "null"],
+          "description": "Populated only when status is failed."
+        },
+        "failed_at_scene_id": {
+          "type": ["string", "null"],
+          "description": "The scene_id being rendered when a failure occurred, where determinable. Null if not applicable or not determinable."
+        },
+        "based_on_storyboard_version": { "type": "string" },
+        "based_on_voice_version": { "type": "string" },
+        "based_on_subtitle_version": { "type": "string" },
+        "based_on_asset_manifest_version": { "type": "string" }
+      }
+    },
+    "videoPackage": {
+      "type": "object",
+      "required": [
+        "package_id",
+        "based_on_render_job_id",
+        "topic_id",
+        "topic_title",
+        "video_file_uri",
+        "thumbnail_frame_uri",
+        "duration_seconds",
+        "resolution",
+        "aspect_ratio",
+        "video_codec",
+        "audio_codec",
+        "file_size_bytes",
+        "checksum",
+        "generated_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "package_id": {
+          "type": "string",
+          "description": "Unique identifier for this finished video artifact."
+        },
+        "based_on_render_job_id": {
+          "type": "string",
+          "description": "The job_id of the RenderJob that produced this package. A VideoPackage only exists when that job's status is completed."
+        },
+        "topic_id": { "type": "string" },
+        "topic_title": { "type": "string" },
+        "video_file_uri": {
+          "type": "string",
+          "description": "Storage location of the final rendered video (e.g. a Cloud Storage URI)."
+        },
+        "thumbnail_frame_uri": {
+          "type": "string",
+          "description": "Storage location of the extracted thumbnail frame — see render-spec.md Section 5 for selection logic."
+        },
+        "duration_seconds": {
+          "type": "number",
+          "description": "Final video duration. Should equal voice_result.total_actual_duration_seconds plus any fixed intro/outro padding."
+        },
+        "resolution": {
+          "type": "string",
+          "pattern": "^[0-9]+x[0-9]+$",
+          "examples": ["1080x1920"]
+        },
+        "aspect_ratio": {
+          "type": "string",
+          "enum": ["9:16", "1:1", "4:5"]
+        },
+        "video_codec": {
+          "type": "string",
+          "enum": ["h264", "h265", "vp9"]
+        },
+        "audio_codec": {
+          "type": "string",
+          "enum": ["aac", "opus"]
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "checksum": {
+          "type": "string",
+          "description": "Integrity checksum (e.g. SHA-256) of the video file."
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

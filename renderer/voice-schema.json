@@ -1,0 +1,191 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/voice-schema.json",
+  "title": "ForgeBrain Voice Result",
+  "description": "The structured output of Voice Generation: rendered narration audio per scene, plus the real measured timing that supersedes the storyboard's word-count estimate. Produced after the Storyboard Generator (see brain/storyboard-spec.md) and consumed by Subtitle Generation and the Renderer. See voice-spec.md for the full process this schema supports.",
+  "type": "object",
+  "required": [
+    "topic_id",
+    "topic_title",
+    "voice_profile",
+    "scenes",
+    "total_estimated_duration_seconds",
+    "total_actual_duration_seconds",
+    "total_duration_drift_seconds",
+    "drift_exceeds_threshold",
+    "drift_threshold_seconds",
+    "audio_format",
+    "sample_rate_hz",
+    "confidence_notes",
+    "voice_version",
+    "generated_at",
+    "based_on_storyboard_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "topic_id": {
+      "type": "string",
+      "description": "Matches the corresponding id in curriculum/java-roadmap.json and the topic_id of the storyboard this audio was generated from."
+    },
+    "topic_title": {
+      "type": "string"
+    },
+    "voice_profile": {
+      "$ref": "#/definitions/voiceProfile"
+    },
+    "scenes": {
+      "type": "array",
+      "description": "Per-scene audio results, in the storyboard's scene_order.",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/sceneAudio" }
+    },
+    "total_estimated_duration_seconds": {
+      "type": "number",
+      "description": "Sum of every scene's estimated_duration_seconds, carried from the storyboard's total_duration_seconds."
+    },
+    "total_actual_duration_seconds": {
+      "type": "number",
+      "description": "Sum of every scene's actual_duration_seconds, measured from the generated audio."
+    },
+    "total_duration_drift_seconds": {
+      "type": "number",
+      "description": "total_actual_duration_seconds - total_estimated_duration_seconds, signed."
+    },
+    "drift_exceeds_threshold": {
+      "type": "boolean",
+      "description": "True if total_duration_drift_seconds (or any single scene's drift) exceeds drift_threshold_seconds."
+    },
+    "drift_threshold_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "The drift threshold used to compute drift_exceeds_threshold. A configuration value, not a fixed constant, so it can be tuned per platform or render_style."
+    },
+    "audio_format": {
+      "type": "string",
+      "enum": ["audio/mpeg", "audio/wav", "audio/ogg"],
+      "description": "MIME type of the rendered audio files."
+    },
+    "sample_rate_hz": {
+      "type": "integer",
+      "enum": [16000, 22050, 24000, 44100, 48000],
+      "description": "Audio sample rate, needed by the Renderer to correctly align audio with video frame timing."
+    },
+    "confidence_notes": {
+      "$ref": "#/definitions/confidenceNotes"
+    },
+    "voice_version": {
+      "type": "string",
+      "description": "Version of the voice generation process/schema, for future caching and migration.",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "based_on_storyboard_version": {
+      "type": "string",
+      "description": "The storyboard_version this audio was generated from, for traceability."
+    }
+  },
+  "definitions": {
+    "voiceProfile": {
+      "type": "object",
+      "description": "Which synthetic voice this result was rendered with. See voice-spec.md Section 6.",
+      "required": ["voice_id", "language_code", "speaking_rate", "pitch"],
+      "additionalProperties": false,
+      "properties": {
+        "voice_id": {
+          "type": "string",
+          "description": "Opaque provider-specific voice identifier (e.g. a Google Cloud Text-to-Speech voice name). Not validated against a fixed enum, since the provider's voice catalog changes independently of this schema."
+        },
+        "language_code": {
+          "type": "string",
+          "description": "BCP-47 language code, e.g. 'en-US'.",
+          "examples": ["en-US"]
+        },
+        "speaking_rate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2.0,
+          "description": "Relative speaking rate; 1.0 is the provider's normal rate."
+        },
+        "pitch": {
+          "type": "number",
+          "minimum": -20,
+          "maximum": 20,
+          "description": "Pitch offset in semitones from the voice's default; 0 is unmodified."
+        }
+      }
+    },
+    "sceneAudio": {
+      "type": "object",
+      "required": [
+        "scene_id",
+        "audio_file_uri",
+        "estimated_duration_seconds",
+        "actual_duration_seconds",
+        "duration_drift_seconds",
+        "word_timings"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scene_id": {
+          "type": "string",
+          "description": "Matches a scene_id from the source storyboard."
+        },
+        "audio_file_uri": {
+          "type": "string",
+          "description": "Storage location of this scene's rendered audio (e.g. a Cloud Storage URI). Phase 1 does not resolve or validate real paths."
+        },
+        "estimated_duration_seconds": {
+          "type": "number",
+          "description": "Carried unchanged from the storyboard scene's duration."
+        },
+        "actual_duration_seconds": {
+          "type": "number",
+          "description": "Measured directly from the generated audio file. This is the timing authority from this stage forward — see voice-spec.md Section 4."
+        },
+        "duration_drift_seconds": {
+          "type": "number",
+          "description": "actual_duration_seconds - estimated_duration_seconds, signed."
+        },
+        "word_timings": {
+          "type": "array",
+          "description": "Word-level alignment within this scene's audio. May be empty if the provider didn't return alignment data for this scene — see voice-spec.md Section 8.",
+          "items": { "$ref": "#/definitions/wordTiming" }
+        }
+      }
+    },
+    "wordTiming": {
+      "type": "object",
+      "required": ["word", "start_time", "end_time"],
+      "additionalProperties": false,
+      "properties": {
+        "word": { "type": "string" },
+        "start_time": { "type": "number", "minimum": 0, "description": "Seconds from the start of this scene's audio, not the full reel." },
+        "end_time": { "type": "number" }
+      }
+    },
+    "confidenceNotes": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "flagged_uncertainties": {
+          "type": "array",
+          "description": "Drift warnings, suspected mispronunciations, or missing alignment data flagged for reviewer attention.",
+          "items": { "type": "string" }
+        },
+        "unresolved_conflicts": {
+          "type": "array",
+          "description": "Reserved for future multi-voice or multi-language conflicts. Empty until relevant.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

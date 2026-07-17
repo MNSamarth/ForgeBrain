@@ -65,7 +65,7 @@ This guarantees a single, reproducible answer every time, and the tie-break path
 
 ## 6. Output: The Decision Object
 
-Every selector run produces exactly one decision object, regardless of whether a topic was actually selected:
+Full field-level contract: [topic-selector-schema.json](topic-selector-schema.json). Every selector run produces exactly one decision object, regardless of whether a topic was actually selected:
 
 | Field | Type | Description |
 | --- | --- | --- |

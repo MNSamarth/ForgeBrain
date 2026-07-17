@@ -36,134 +36,74 @@ Scaling to 4/day is a target for a later phase, not a Phase 1 requirement. Phase
 
 ## 4. System Architecture
 
+> **This section is superseded by [`docs/PIPELINE.md`](PIPELINE.md), the authoritative, current description of all fourteen stages.** It's kept here, updated, because it's part of this document's original narrative — but treat `docs/PIPELINE.md` as the source of truth if the two ever disagree, and its own field-level schemas (linked from there) as the source of truth over either document's prose.
+
 At a high level, ForgeBrain is a pipeline of specialized components, each with one job:
 
-- **Curriculum Engine** — Owns the structured map of what Java topics exist, their order, and their dependencies. Decides what "the next topic" means in context.
-- **Topic Memory** — Tracks what has already been covered, when, and how it performed. Prevents repetition and informs the Curriculum Engine's next choice.
-- **Research Agent** — Gathers and verifies the factual/technical grounding for a chosen topic before any teaching content is written.
-- **Lesson Generator** — Turns a topic plus research into a structured lesson: the core explanation, examples, and teaching sequence.
-- **Script Generator** — Converts a lesson into a short-form video script: narration lines, timing beats, and on-screen text cues.
-- **Reviewer** — Checks the script and lesson for technical accuracy, clarity, and pacing before anything is rendered. Can reject or request revision.
-- **Storyboard Generator** — Breaks the reviewed script into discrete visual scenes/shots: what appears on screen for each narration segment.
-- **Renderer** — Turns the storyboard, narration audio, and visual assets into a finished vertical video file.
-- **Publisher Preparation** — Packages the rendered reel with the metadata a future publishing step will need (title, description, thumbnail frame). Does not post anywhere in Phase 1.
-- **Analytics and Feedback Loop** — Captures performance data on published reels and feeds it back into Topic Memory to influence future topic and content decisions. Not active in Phase 1.
+- **Curriculum Engine** — Owns the structured map of what Java topics exist, their order, and their dependencies. Decides what "the next topic" means in context. (`curriculum/`)
+- **Topic Memory** — Tracks what has already been covered, when, and how it performed. Prevents repetition and informs the Curriculum Engine's next choice. (`memory/`)
+- **Research Agent** — Gathers and verifies the factual/technical grounding for a chosen topic before any teaching content is written. (`brain/research-spec.md`)
+- **Lesson Generator** — Turns a topic plus research into a structured lesson: the core explanation, examples, and teaching sequence. (`brain/lesson-spec.md`)
+- **Content Director** — Decides how a lesson should be taught (hook, pacing, tone, visual strategy) before any dialogue is written. (`brain/content-director-spec.md`)
+- **Script Generator** — Converts a lesson and a content strategy into a short-form video script: narration lines, timing beats, and on-screen text cues. (`brain/script-spec.md`)
+- **Storyboard Generator** — Breaks the script into discrete visual scenes/shots: what appears on screen for each narration segment. (`brain/storyboard-spec.md`)
+- **Voice Generation** — Synthesizes narration audio and establishes the real, measured timing that supersedes every estimate made upstream. (`renderer/voice-spec.md`)
+- **Subtitle Generation** — Produces final captions reconciled against real audio timing. (`renderer/subtitle-spec.md`)
+- **Asset Management** — Resolves abstract style choices into concrete fonts, color themes, music, and brand assets. (`renderer/asset-management-spec.md`)
+- **Renderer** — Turns the storyboard, narration audio, subtitles, and resolved assets into a finished vertical video file. (`renderer/render-spec.md`)
+- **Reviewer** — The pipeline's final quality gate: combines hard safety checks with scored quality judgment to approve, request revision, or reject a finished video. Runs *after* rendering, not before — see `docs/PIPELINE.md` Section 2 for why this supersedes this document's original pre-storyboard placement. (`reviewer/reviewer-spec.md`, `reviewer/quality-scoring-spec.md`)
+- **Publishing Package** — Packages an approved reel with the metadata a future publishing step will need (title, description, thumbnail frame). Does not post anywhere in Phase 1. (`publishing/publishing-spec.md`)
+- **Analytics and Feedback Loop** — Captures performance data on published reels and feeds it back into Topic Memory to influence future topic and content decisions. Not active in Phase 1. (`analytics/analytics-spec.md`)
 
 ## 5. Data Flow
 
-The pipeline runs as a linear sequence per reel, with the Reviewer able to send work backward for revision:
-
-1. **Topic selection** — Curriculum Engine consults Topic Memory and selects the next Java topic.
-2. **Research** — Research Agent gathers accurate technical grounding for that topic.
-3. **Lesson creation** — Lesson Generator produces a structured lesson from the topic + research.
-4. **Script generation** — Script Generator converts the lesson into a narration/timing script.
-5. **Review** — Reviewer evaluates the script and lesson; approves or sends back for revision.
-6. **Storyboard creation** — Storyboard Generator maps the approved script into discrete visual scenes.
-7. **Audio generation** — Narration audio is generated from the approved script.
-8. **Rendering** — Renderer combines storyboard, audio, and visual templates into a video file.
-9. **Export** — Finished reel and its metadata are packaged as output artifacts.
-10. **Analytics capture** — (Post-Phase 1) Performance data is collected once a reel is published.
-11. **Memory update** — Topic Memory is updated with what was covered and (once available) how it performed, closing the loop for the next topic-selection cycle.
+See [`docs/PIPELINE.md`](PIPELINE.md) Section 1 for the full, authoritative fourteen-stage sequence and Section 4 for the "estimate, then reality" throughline connecting Script through Rendering. In brief: topic selection and research ground the reel in curriculum and fact; lesson and content strategy decide what's taught and how; script and storyboard commit that to words and a visual plan; voice, subtitles, assets, and rendering turn the plan into a real video; the Reviewer gates the finished artifact; Publishing Package bundles what's approved. Analytics closes the loop back to Memory once a reel is actually posted somewhere — which Phase 1 never does.
 
 ## 6. Repository Structure
 
 ```text
 forgebrain/
-├── backend/       # Orchestration logic that runs the pipeline stages in sequence
-├── curriculum/     # Curriculum structure: topic definitions, ordering, dependencies
-├── prompts/        # Individual prompt templates, one per pipeline stage
-├── memory/         # Topic memory and content memory state
-├── renderer/        # Video rendering pipeline: templates, scene composition, export
-├── assets/         # Static assets: fonts, brand elements, background music, code themes
-├── docs/          # Design and planning documentation
-├── scripts/        # Developer and automation scripts
-└── .github/        # Repository configuration (workflows, templates)
+├── brain/          # Decision layer: topic selection, research, lesson, content strategy, script, storyboard
+├── renderer/        # Production layer: voice, subtitles, asset resolution, rendering
+├── reviewer/        # Final quality gate: quality scoring and review verdicts
+├── publishing/       # Bundles an approved reel for a future publishing step
+├── analytics/        # Performance feedback loop design (not active in Phase 1)
+├── backend/         # Spring Boot project structure: interfaces, models, config placeholders
+├── curriculum/       # Curriculum structure: topic definitions, ordering, dependencies
+├── memory/          # Topic memory and content memory state
+├── prompts/         # Individual prompt templates, one per pipeline stage (not yet populated)
+├── assets/          # Static assets: fonts, brand elements, background music, code themes (not yet populated)
+├── docs/           # Design and planning documentation
+├── scripts/         # Developer and automation scripts (not yet populated)
+└── .github/         # Repository configuration (workflows, templates)
 ```
 
-Each folder maps to a stage or supporting concern in the architecture above — no folder exists without a corresponding component in Section 4.
+Each folder maps to one or more stages or supporting concerns in the architecture above — no folder exists without a corresponding component in Section 4. See the root `README.md` for a one-line purpose per folder.
 
 ## 7. Data Models
 
-These are the core entities the system operates on. Shown as simplified JSON examples for clarity, not as final schemas.
+The illustrative JSON this section originally contained (written before any real schema existed) has been superseded and removed to avoid drift — it no longer matched the field names, types, or structure of the schemas actually built, which is exactly the kind of inconsistency this document should not carry. Every data model is now formally defined as a JSON Schema (draft-07), each with its own worked examples:
 
-**Topic**
-```json
-{
-  "id": "java-generics-basics",
-  "title": "Introduction to Generics",
-  "domain": "java",
-  "dependsOn": ["java-classes-basics"],
-  "status": "not_covered"
-}
-```
+| Model | Authoritative schema |
+| --- | --- |
+| Topic (curriculum) | `curriculum/java-roadmap.json` |
+| Memory State | `memory/memory-schema.json` |
+| Topic Selection Decision | `brain/topic-selector-schema.json` |
+| Research Result | `brain/research-output-schema.json` |
+| Lesson | `brain/lesson-output-schema.json` |
+| Content Strategy | `brain/content-director-schema.json` |
+| Script | `brain/script-output-schema.json` |
+| Storyboard / Scene | `brain/storyboard-output-schema.json` |
+| Voice Result | `renderer/voice-schema.json` |
+| Subtitle Result | `renderer/subtitle-schema.json` |
+| Asset Manifest | `renderer/asset-management-schema.json` |
+| Render Job / Video Package | `renderer/render-schema.json` |
+| Quality Score | `reviewer/quality-scoring-schema.json` |
+| Review Result | `reviewer/reviewer-schema.json` |
+| Publishing Package | `publishing/publishing-schema.json` |
+| Analytics (not active) | `analytics/analytics-schema.json` |
 
-**Lesson**
-```json
-{
-  "id": "lesson-001",
-  "topicId": "java-generics-basics",
-  "summary": "What generics are and why they exist",
-  "keyPoints": ["type safety", "generic classes", "generic methods"],
-  "examples": ["List<T> usage example"]
-}
-```
-
-**Script**
-```json
-{
-  "id": "script-001",
-  "lessonId": "lesson-001",
-  "lines": [
-    { "time": "0:00", "narration": "...", "onScreenText": "..." }
-  ]
-}
-```
-
-**Review**
-```json
-{
-  "scriptId": "script-001",
-  "verdict": "revise",
-  "issues": ["pacing too fast in middle third"]
-}
-```
-
-**Reel**
-```json
-{
-  "id": "reel-001",
-  "scriptId": "script-001",
-  "videoFile": "reel-001.mp4",
-  "status": "rendered"
-}
-```
-
-**Asset**
-```json
-{
-  "id": "asset-code-theme-dark",
-  "type": "visual-template",
-  "path": "assets/templates/code-dark.json"
-}
-```
-
-**Performance Metrics** *(post-Phase 1)*
-```json
-{
-  "reelId": "reel-001",
-  "views": 0,
-  "retentionCurve": [],
-  "completionRate": 0
-}
-```
-
-**Memory State**
-```json
-{
-  "coveredTopics": ["java-classes-basics"],
-  "lastUpdated": "2026-07-16"
-}
-```
+`backend/src/main/java/com/forgebrain/backend/models/` mirrors every one of these as a Java record — see `backend/README.md` Section on fidelity for how closely.
 
 ## 8. AI Prompting Strategy
 
@@ -193,21 +133,22 @@ Rendering focuses on making short, vertical Java content easy to follow at a gla
 **Included in Phase 1:**
 
 - Repository scaffold (complete).
-- This architecture document.
-- Curriculum structure for Java (topic definitions and ordering).
-- Memory model (structure for tracking covered topics).
-- Topic selection logic (Curriculum Engine + Topic Memory working together).
-- One complete reel generation path: topic → research → lesson → script → review → storyboard → render → export, for a single topic end to end.
+- This architecture document, and the fourteen-stage pipeline it now points to in `docs/PIPELINE.md` (complete).
+- Curriculum structure for Java (topic definitions and ordering) — complete.
+- Memory model (structure for tracking covered topics) — complete.
+- A fully specified architecture (spec + JSON Schema + worked examples) for every pipeline stage: topic selection, research, lesson, content direction, script, storyboard, voice, subtitles, assets, rendering, review, quality scoring, and publishing preparation — complete.
+- A Spring Boot backend project structure mirroring every stage's schema as an interface and domain model — complete, but **contains no business logic, no AI provider integration, and no working implementation of any stage**. See `TODO.md`.
+- One complete reel generation path, implemented end to end for a single topic, is **not yet complete** — the architecture for it is finished; the code that executes it is not.
 
 **Explicitly not included in Phase 1:**
 
 - Auto-posting to social media platforms.
-- Analytics dashboards.
+- Analytics *dashboards* or any live metrics collection. Note the distinction from `analytics/`: that folder's *architecture* was designed in this pass specifically because every other stage already reserved fields for the data it would produce (see `analytics/analytics-spec.md` Section 3) — designing the shape of a capability ahead of need is not the same as activating it, and nothing in `analytics/` runs or collects anything.
 - Multi-language support (any language other than Java).
-- Advanced A/B testing of content variants.
-- Scaling infrastructure for high-volume (multi-reel-per-day) production.
+- Advanced A/B testing of content variants (though `variant_id` fields are already reserved in `script-output-schema.json` for exactly this, unpopulated).
+- Scaling infrastructure for high-volume (multi-reel-per-day) production, and no deployment infrastructure (Docker, Kubernetes, CI/CD) of any kind — see `backend/README.md`.
 
-Phase 1 succeeds when one topic can move through the entire pipeline and produce a finished, correctly rendered reel without manual intervention at any stage.
+Phase 1 succeeds when one topic can move through the entire pipeline and produce a finished, correctly rendered reel without manual intervention at any stage. The architecture for that is now fully designed; implementing it is the next phase of work — see Section 12 and `TODO.md`.
 
 ## 11. Risks and Tradeoffs
 
@@ -219,10 +160,12 @@ Phase 1 succeeds when one topic can move through the entire pipeline and produce
 
 ## 12. Next Implementation Steps
 
-1. Define the Java curriculum structure in `curriculum/` (topic list, ordering, dependency rules).
-2. Define the memory model in `memory/` (what "covered" means, what state is persisted between runs).
-3. Implement topic selection logic (Curriculum Engine reading from Topic Memory).
-4. Draft the first-stage prompts (planner, research, teaching) in `prompts/` and validate their structured output format.
-5. Build the single end-to-end path for one topic through to a rendered reel, without review-loop revision handling yet.
-6. Add the Reviewer stage and revision loop once the base path is proven.
-7. Revisit scope for Phase 2 only after one reel has been produced correctly through the full pipeline.
+The architecture-design steps this section originally listed (curriculum structure, memory model, topic selection design) are complete. The next steps are implementation, not design — tracked in full, with priority and dependencies, in the repository root [`TODO.md`](../TODO.md). In summary:
+
+1. Wire a real `VertexAiClient` implementation (`backend/vertex/`) against Vertex AI, and draft the first narrowly-scoped prompts (planner, research, teaching) this document's Section 8 already calls for — currently `prompts/` is unpopulated.
+2. Implement `TopicSelector` and `MemoryService` against real Firestore-backed repositories, replacing the placeholder `repositories/` contracts.
+3. Implement `ResearchService`, `LessonService`, `ContentDirectorService`, and `ScriptService`, each validated against its schema's worked examples in `brain/`.
+4. Build the single end-to-end path for one topic through Storyboard, without Voice/Subtitles/Assets/Rendering yet — confirming the decision layer alone produces correct, schema-valid output.
+5. Implement the production layer (`VoiceService`, `SubtitleService`, `AssetService`, `RendererService`) and the Reviewer, completing one full reel end to end.
+6. Populate `assets/` with a real asset catalog for `AssetService` to resolve against.
+7. Revisit scope for a post-Phase-1 pass — including activating `analytics/` — only after one reel has been produced correctly through the full pipeline.

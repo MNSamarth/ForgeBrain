@@ -1,0 +1,334 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/storyboard-output-schema.json",
+  "title": "ForgeBrain Reel Storyboard",
+  "description": "The structured, render-ready scene plan produced by the Storyboard Generator from a finalized script. Produced after the Script Generator (see script-spec.md) and consumed directly by the Renderer. See storyboard-spec.md for the full process this schema supports.",
+  "type": "object",
+  "required": [
+    "topic_id",
+    "topic_title",
+    "total_duration_seconds",
+    "scene_count",
+    "scenes",
+    "scene_order",
+    "visual_style",
+    "animation_style",
+    "subtitle_style",
+    "code_style",
+    "transition_style",
+    "pacing_profile",
+    "emphasis_points",
+    "confidence_notes",
+    "platform",
+    "aspect_ratio",
+    "render_style",
+    "target_duration_seconds",
+    "storyboard_version",
+    "generated_at",
+    "based_on_script_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "topic_id": {
+      "type": "string",
+      "description": "Matches the corresponding id in curriculum/java-roadmap.json and the topic_id of the script this storyboard was built from."
+    },
+    "topic_title": {
+      "type": "string",
+      "description": "Matches the corresponding title in curriculum/java-roadmap.json."
+    },
+    "total_duration_seconds": {
+      "type": "number",
+      "minimum": 5,
+      "description": "Sum of every scene's duration. Must equal the last scene's end_time and should land at or below target_duration_seconds."
+    },
+    "scene_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Must equal the length of the scenes array."
+    },
+    "scenes": {
+      "type": "array",
+      "description": "The ordered scene-by-scene plan. Scenes are contiguous: each scene's start_time equals the previous scene's end_time, with no gaps or overlaps.",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/scene" }
+    },
+    "scene_order": {
+      "type": "array",
+      "description": "The scene_id values from scenes, in playback order. Must exactly match scenes[].scene_id in the same order — a convenience list for renderers that don't need the full scene objects to sequence playback.",
+      "items": { "type": "string" }
+    },
+    "visual_style": {
+      "type": "string",
+      "enum": ["full-screen-typography", "code-animation", "diagram", "cursor-movement", "highlight-animation", "split-screen", "timeline"],
+      "description": "The overall primary visual technique for this reel. Carried from content_director_output.visual_style unless the storyboard stage has a specific reason to refine it."
+    },
+    "animation_style": {
+      "type": "string",
+      "enum": ["snappy-cuts", "smooth-transitions", "kinetic-typography", "minimal-static", "dynamic-camera"],
+      "description": "The overall motion energy and approach across scenes, distinct from visual_style (which is about what's shown, not how it moves)."
+    },
+    "subtitle_style": {
+      "type": "string",
+      "enum": ["bold-centered", "karaoke-highlight", "minimal-bottom-third", "boxed-caption"],
+      "description": "How subtitles are rendered across the reel."
+    },
+    "code_style": {
+      "type": "string",
+      "enum": ["typing-animation", "line-by-line-reveal", "static-panel-with-highlight", "before-after-comparison", "cursor-walkthrough"],
+      "description": "The code *rendering technique* used in code-reveal scenes. Distinct from content_director_output.code_style, which is about narrative framing (e.g. bug-example, optimization-example) — see storyboard-spec.md Section 3 for how the two relate."
+    },
+    "transition_style": {
+      "type": "string",
+      "enum": ["hard-cut", "quick-fade", "slide", "zoom-punch", "match-cut"],
+      "description": "The default transition used between scenes unless a specific scene overrides it via transition_in/transition_out."
+    },
+    "pacing_profile": {
+      "$ref": "#/definitions/pacingProfile"
+    },
+    "emphasis_points": {
+      "type": "array",
+      "description": "The reel's most important visual/narrative moments across the whole timeline — the 'don't miss this' beats, distinct from per-scene highlighted_words.",
+      "items": { "$ref": "#/definitions/emphasisPoint" }
+    },
+    "confidence_notes": {
+      "$ref": "#/definitions/confidenceNotes"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["youtube-shorts", "instagram-reels", "tiktok", "generic-vertical-short"],
+      "description": "Carried from the script/content strategy unless explicitly overridden."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "enum": ["9:16", "1:1", "4:5"],
+      "description": "Target frame aspect ratio. 9:16 is the default for vertical short-form reels."
+    },
+    "render_style": {
+      "type": "string",
+      "enum": ["dark-mode-ide", "minimal-light", "neon-tech", "terminal-retro"],
+      "description": "The overall brand rendering aesthetic applied across every scene."
+    },
+    "target_duration_seconds": {
+      "type": "integer",
+      "minimum": 15,
+      "maximum": 180,
+      "description": "Carried from the script's target_duration_seconds unless explicitly overridden."
+    },
+    "storyboard_version": {
+      "type": "string",
+      "description": "Version of the storyboard process/schema that produced this plan, for future caching and migration.",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this storyboard was produced."
+    },
+    "based_on_script_version": {
+      "type": "string",
+      "description": "The script_version of the script this storyboard was built from, for traceability."
+    }
+  },
+  "definitions": {
+    "scene": {
+      "type": "object",
+      "required": [
+        "scene_id",
+        "start_time",
+        "end_time",
+        "duration",
+        "scene_type",
+        "voiceover_text",
+        "on_screen_text",
+        "visual_description",
+        "code_block",
+        "motion_notes",
+        "transition_in",
+        "transition_out",
+        "subtitle_segments",
+        "highlighted_words",
+        "purpose"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scene_id": {
+          "type": "string",
+          "description": "Unique, ordered identifier (e.g. 'scene-1-hook')."
+        },
+        "start_time": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds from the start of the reel."
+        },
+        "end_time": {
+          "type": "number",
+          "description": "start_time + duration."
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0.5,
+          "description": "This scene's length in seconds, derived from its voiceover_text word count at the same speaking rate used in script-spec.md Section 8."
+        },
+        "scene_type": {
+          "type": "string",
+          "enum": ["hook", "setup", "explanation", "code-reveal", "step-breakdown", "mistake-highlight", "comparison", "recap", "cta"],
+          "description": "What role this scene plays. Should be chosen from the actual content of this beat, not mechanically assigned from which script field it came from — see storyboard-spec.md Section 6."
+        },
+        "voiceover_text": {
+          "type": "string",
+          "description": "The exact spoken text for this scene. Concatenating every scene's voiceover_text in scene_order must reproduce the script's full_spoken_script exactly — no words added, dropped, or reordered."
+        },
+        "on_screen_text": {
+          "type": "array",
+          "description": "Short on-screen text overlays for this scene (keywords/captions, not full sentences). May be empty for a scene with no overlay text.",
+          "items": { "type": "string" }
+        },
+        "visual_description": {
+          "type": "string",
+          "description": "Prose description of what the viewer sees in this scene, specific enough for a renderer to execute without guessing."
+        },
+        "code_block": {
+          "description": "The code shown in this scene, or null if no code is visible.",
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/codeBlock" }
+          ]
+        },
+        "motion_notes": {
+          "type": "string",
+          "description": "How elements move within this scene (e.g. 'text kinetic-types in from the left, settles center, holds')."
+        },
+        "transition_in": {
+          "type": "string",
+          "enum": ["hard-cut", "quick-fade", "slide", "zoom-punch", "match-cut"],
+          "description": "How this scene begins relative to the previous one. Defaults to the storyboard's transition_style unless this scene needs something different."
+        },
+        "transition_out": {
+          "type": "string",
+          "enum": ["hard-cut", "quick-fade", "slide", "zoom-punch", "match-cut"],
+          "description": "How this scene ends relative to the next one."
+        },
+        "subtitle_segments": {
+          "type": "array",
+          "description": "The subset of the script's subtitle_segments that fall within this scene, now carrying absolute start_time/end_time on the reel timeline instead of the script's relative estimated_duration_seconds.",
+          "items": { "$ref": "#/definitions/timedSubtitleSegment" }
+        },
+        "highlighted_words": {
+          "type": "array",
+          "description": "Union of emphasis_words across this scene's subtitle_segments, for quick renderer reference without iterating the nested array.",
+          "items": { "type": "string" }
+        },
+        "purpose": {
+          "type": "string",
+          "description": "One sentence on the retention/storytelling job this scene does, tying back to the content strategy's retention_goal or emotional_goal."
+        }
+      }
+    },
+    "codeBlock": {
+      "type": "object",
+      "required": ["code_snippet", "focus_line", "language"],
+      "additionalProperties": false,
+      "properties": {
+        "code_snippet": {
+          "type": "string",
+          "description": "The on-screen code, carried from the script's code_narration.code_snippet."
+        },
+        "focus_line": {
+          "type": "string",
+          "description": "Which line to highlight, carried from the script's code_narration.focus_line."
+        },
+        "language": {
+          "type": "string",
+          "enum": ["java"],
+          "description": "Fixed to java for Phase 1."
+        }
+      }
+    },
+    "timedSubtitleSegment": {
+      "type": "object",
+      "required": ["text", "start_time", "end_time", "emphasis_words"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "start_time": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_time": {
+          "type": "number"
+        },
+        "emphasis_words": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "pacingProfile": {
+      "type": "object",
+      "required": ["tier", "average_scene_duration_seconds", "shortest_scene_duration_seconds", "longest_scene_duration_seconds"],
+      "additionalProperties": false,
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": ["fast", "medium", "slow"],
+          "description": "Carried from content_director_output.pacing."
+        },
+        "average_scene_duration_seconds": {
+          "type": "number",
+          "description": "Must equal total_duration_seconds / scene_count."
+        },
+        "shortest_scene_duration_seconds": {
+          "type": "number",
+          "description": "The shortest scene's duration, for a quick check against the 'avoid long static scenes' guidance."
+        },
+        "longest_scene_duration_seconds": {
+          "type": "number"
+        }
+      }
+    },
+    "emphasisPoint": {
+      "type": "object",
+      "required": ["scene_id", "moment", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "scene_id": {
+          "type": "string",
+          "description": "Which scene this emphasis point falls within."
+        },
+        "moment": {
+          "type": "string",
+          "description": "What specifically happens at this moment (e.g. 'the exception message appears')."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why this moment matters for retention, tying back to the content strategy's retention_goal."
+        }
+      }
+    },
+    "confidenceNotes": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Coarse self-assessment of how render-ready this storyboard is."
+        },
+        "flagged_uncertainties": {
+          "type": "array",
+          "description": "Scene-timing or visual judgment calls flagged for reviewer attention.",
+          "items": { "type": "string" }
+        },
+        "unresolved_conflicts": {
+          "type": "array",
+          "description": "Reserved for future multi-template or platform-format conflicts. Empty until relevant.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

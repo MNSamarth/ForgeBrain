@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: forgebrain-backend
+  profiles:
+    active: local
+
+server:
+  port: ${PORT:8080}
+
+# ---------------------------------------------------------------------------
+# ForgeBrain application configuration.
+#
+# This section defines STRUCTURE only. No real project IDs, bucket names, or
+# credentials belong here or in any profile-specific file in this repository —
+# see docs/CONFIGURATION.md Section 5. Real values are supplied via environment
+# variables or Google Secret Manager at deploy time, never committed.
+# ---------------------------------------------------------------------------
+forgebrain:
+  application:
+    environment: local
+    pipeline-version: "1.0.0"
+    enabled-stages: []
+  vertex-ai:
+    project-id: ""
+    location: "us-central1"
+    research-model: ""
+    lesson-model: ""
+    script-model: ""
+  cloud-storage:
+    media-bucket: ""
+    assets-bucket: ""
+    temp-bucket: ""
+  firestore:
+    project-id: ""
+    database-id: "(default)"
+    collection-prefix: "forgebrain"
+  cloud-scheduler:
+    job-name: ""
+    cron-expression: "0 0 * * *"
+    timezone: "UTC"
+  cloud-run:
+    service-name: "forgebrain-backend"
+    region: "us-central1"
+    max-concurrency: 10

@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/analytics-schema.json",
+  "title": "ForgeBrain Analytics: Performance Snapshot and Strategy Performance Aggregate",
+  "description": "Not active in Phase 1 — see analytics-spec.md Section 1. Defines the two shapes Analytics produces: a per-reel PerformanceSnapshot (feeds back into memory/memory-schema.json's audience_response) and a cross-topic StrategyPerformanceAggregate (feeds the strategy_performance extension points already reserved in brain/content-director-spec.md, brain/script-spec.md, and brain/storyboard-spec.md).",
+  "definitions": {
+    "performanceSnapshot": {
+      "type": "object",
+      "required": [
+        "snapshot_id",
+        "topic_id",
+        "based_on_publishing_package_id",
+        "platform",
+        "metrics",
+        "computed_performance_score",
+        "computed_retention_score",
+        "snapshot_taken_at",
+        "snapshot_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "description": "Unique identifier for this performance snapshot."
+        },
+        "topic_id": {
+          "type": "string",
+          "description": "Matches memory.topics[topic_id] this snapshot updates."
+        },
+        "based_on_publishing_package_id": {
+          "type": "string",
+          "description": "The package_id of the PublishingPackage this reel was posted from."
+        },
+        "platform": {
+          "type": "string",
+          "enum": ["youtube-shorts", "instagram-reels", "tiktok", "generic-vertical-short"]
+        },
+        "metrics": {
+          "$ref": "#/definitions/audienceResponse"
+        },
+        "computed_performance_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Normalized 0-1 score derived from metrics, written into memory.topics[topic_id].performance_score. Derivation formula is intentionally not fixed here — see analytics-spec.md Section 6."
+        },
+        "computed_retention_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Normalized 0-1 score derived from metrics.average_retention_percent, written into memory.topics[topic_id].retention_score."
+        },
+        "snapshot_taken_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When these metrics were captured. A topic may accumulate multiple snapshots over time as metrics mature (e.g. day 1, day 7, day 30)."
+        },
+        "snapshot_version": {
+          "type": "string",
+          "examples": ["1.0.0"]
+        }
+      }
+    },
+    "audienceResponse": {
+      "type": "object",
+      "description": "Field names and types deliberately match memory-schema.json's audienceResponse definition exactly, since this is what gets written into it.",
+      "required": ["view_count", "watch_time_seconds", "average_retention_percent", "likes", "comments", "shares", "saves", "follower_conversion"],
+      "additionalProperties": false,
+      "properties": {
+        "view_count": { "type": "integer", "minimum": 0 },
+        "watch_time_seconds": { "type": "number", "minimum": 0 },
+        "average_retention_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "likes": { "type": "integer", "minimum": 0 },
+        "comments": { "type": "integer", "minimum": 0 },
+        "shares": { "type": "integer", "minimum": 0 },
+        "saves": { "type": "integer", "minimum": 0 },
+        "follower_conversion": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "strategyPerformanceAggregate": {
+      "type": "object",
+      "required": [
+        "aggregate_id",
+        "dimension",
+        "value",
+        "sample_size",
+        "average_performance_score",
+        "average_retention_score",
+        "contributing_topic_ids",
+        "last_updated"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "aggregate_id": {
+          "type": "string",
+          "description": "Unique identifier for this aggregate, e.g. a stable hash of dimension+value."
+        },
+        "dimension": {
+          "type": "string",
+          "enum": ["hook_type", "teaching_style", "visual_style", "pacing", "code_style", "cta_style", "emotional_goal", "scene_type", "animation_style"],
+          "description": "Which strategy field (from content-director-schema.json or storyboard-output-schema.json) this aggregate groups by."
+        },
+        "value": {
+          "type": "string",
+          "description": "The specific value within that dimension being aggregated, e.g. 'myth' for dimension: hook_type.",
+          "examples": ["myth"]
+        },
+        "sample_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many reels contributed to this aggregate. Small sample sizes should be treated with proportionally less confidence — see analytics-spec.md Section 6."
+        },
+        "average_performance_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "average_retention_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "contributing_topic_ids": {
+          "type": "array",
+          "description": "Which topics' reels fed this aggregate, for traceability back to individual PerformanceSnapshots.",
+          "items": { "type": "string" }
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

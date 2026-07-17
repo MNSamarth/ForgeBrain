@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/asset-management-schema.json",
+  "title": "ForgeBrain Asset Manifest",
+  "description": "The structured output of Asset Management: concrete, renderer-ready asset references resolved from a storyboard's abstract style choices. Produced after Subtitle Generation and consumed by the Renderer. See asset-management-spec.md for the full process this schema supports.",
+  "type": "object",
+  "required": [
+    "topic_id",
+    "topic_title",
+    "render_style",
+    "resolved_theme",
+    "background_music",
+    "watermark",
+    "scene_assets",
+    "confidence_notes",
+    "asset_manifest_version",
+    "generated_at",
+    "based_on_storyboard_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "topic_id": { "type": "string" },
+    "topic_title": { "type": "string" },
+    "render_style": {
+      "type": "string",
+      "enum": ["dark-mode-ide", "minimal-light", "neon-tech", "terminal-retro"],
+      "description": "Carried from storyboard.render_style — the style this manifest resolves."
+    },
+    "resolved_theme": {
+      "$ref": "#/definitions/resolvedTheme"
+    },
+    "background_music": {
+      "$ref": "#/definitions/backgroundMusic"
+    },
+    "watermark": {
+      "$ref": "#/definitions/watermark"
+    },
+    "scene_assets": {
+      "type": "array",
+      "description": "Per-scene supplementary assets, only for scenes whose visual_description implies a specific supporting graphic. Most scenes have no entry here.",
+      "items": { "$ref": "#/definitions/sceneAsset" }
+    },
+    "confidence_notes": {
+      "$ref": "#/definitions/confidenceNotes"
+    },
+    "asset_manifest_version": {
+      "type": "string",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "based_on_storyboard_version": { "type": "string" }
+  },
+  "definitions": {
+    "resolvedTheme": {
+      "type": "object",
+      "required": ["font_heading", "font_body", "font_code", "color_palette", "code_syntax_theme"],
+      "additionalProperties": false,
+      "properties": {
+        "font_heading": { "type": "string", "description": "Asset reference (e.g. Cloud Storage URI) for the display/heading font." },
+        "font_body": { "type": "string", "description": "Asset reference for the body/subtitle font." },
+        "font_code": { "type": "string", "description": "Asset reference for the monospace code font." },
+        "color_palette": { "$ref": "#/definitions/colorPalette" },
+        "code_syntax_theme": { "type": "string", "description": "Asset reference for the code syntax highlighting theme definition." }
+      }
+    },
+    "colorPalette": {
+      "type": "object",
+      "required": ["background", "text_primary", "text_accent", "error", "success"],
+      "additionalProperties": false,
+      "properties": {
+        "background": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "text_primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "text_accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "error": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "success": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+      }
+    },
+    "backgroundMusic": {
+      "type": "object",
+      "required": ["track_uri", "license", "volume_db"],
+      "additionalProperties": false,
+      "properties": {
+        "track_uri": { "type": "string", "description": "Asset reference for the background music track." },
+        "license": { "type": "string", "description": "Licensing terms/reference for this track, reserved for future licensed-asset tracking." },
+        "volume_db": { "type": "number", "maximum": 0, "description": "Relative volume offset applied under narration, in decibels (negative = quieter)." }
+      }
+    },
+    "watermark": {
+      "type": "object",
+      "required": ["asset_uri", "position"],
+      "additionalProperties": false,
+      "properties": {
+        "asset_uri": { "type": "string", "description": "Asset reference for the brand watermark/logo." },
+        "position": {
+          "type": "string",
+          "enum": ["top-left", "top-right", "bottom-left", "bottom-right"]
+        }
+      }
+    },
+    "sceneAsset": {
+      "type": "object",
+      "required": ["scene_id", "asset_refs"],
+      "additionalProperties": false,
+      "properties": {
+        "scene_id": { "type": "string", "description": "Matches a scene_id from the source storyboard." },
+        "asset_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Asset references (e.g. icon files) this specific scene needs beyond the resolved_theme."
+        }
+      }
+    },
+    "confidenceNotes": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+        "flagged_uncertainties": { "type": "array", "items": { "type": "string" } },
+        "unresolved_conflicts": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

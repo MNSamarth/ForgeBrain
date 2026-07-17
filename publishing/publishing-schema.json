@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/publishing-schema.json",
+  "title": "ForgeBrain Publishing Package",
+  "description": "The structured, final bundle produced by Publishing Preparation from an approved ReviewResult. This is the last artifact Phase 1 produces — no field here triggers an actual post to any platform. See publishing-spec.md for the full process this schema supports.",
+  "type": "object",
+  "required": [
+    "package_id",
+    "topic_id",
+    "topic_title",
+    "based_on_review_id",
+    "based_on_video_package_id",
+    "video_file_uri",
+    "thumbnail_uri",
+    "captions_file_uri",
+    "metadata",
+    "platform_variants",
+    "scheduling",
+    "confidence_notes",
+    "publishing_version",
+    "generated_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Unique identifier for this publishing package."
+    },
+    "topic_id": { "type": "string" },
+    "topic_title": { "type": "string" },
+    "based_on_review_id": {
+      "type": "string",
+      "description": "The review_id of the ReviewResult this package was built from. Must reference a review whose verdict was approved — see publishing-spec.md Section 4."
+    },
+    "based_on_video_package_id": {
+      "type": "string"
+    },
+    "video_file_uri": {
+      "type": "string",
+      "description": "Carried from the source VideoPackage."
+    },
+    "thumbnail_uri": {
+      "type": "string",
+      "description": "Carried from the source VideoPackage."
+    },
+    "captions_file_uri": {
+      "type": "string",
+      "description": "Carried from the source SubtitleResult."
+    },
+    "metadata": {
+      "$ref": "#/definitions/publishingMetadata"
+    },
+    "platform_variants": {
+      "type": "array",
+      "description": "Optional per-platform overrides of metadata. Empty when the default metadata applies everywhere.",
+      "items": { "$ref": "#/definitions/platformVariant" }
+    },
+    "scheduling": {
+      "$ref": "#/definitions/scheduling"
+    },
+    "confidence_notes": {
+      "$ref": "#/definitions/confidenceNotes"
+    },
+    "publishing_version": {
+      "type": "string",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "definitions": {
+    "publishingMetadata": {
+      "type": "object",
+      "required": ["title", "description", "tags", "hashtags", "category", "language_code"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "tags": {
+          "type": "array",
+          "description": "Platform category/search tags (e.g. 'java', 'programming', 'coding tutorial').",
+          "items": { "type": "string" }
+        },
+        "hashtags": {
+          "type": "array",
+          "description": "In-caption hashtags (e.g. '#java', '#codingtips').",
+          "items": { "type": "string" }
+        },
+        "category": {
+          "type": "string",
+          "description": "Platform content category, e.g. 'Education' or 'Science & Technology'."
+        },
+        "language_code": {
+          "type": "string",
+          "examples": ["en-US"]
+        }
+      }
+    },
+    "platformVariant": {
+      "type": "object",
+      "required": ["platform", "metadata"],
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": ["youtube-shorts", "instagram-reels", "tiktok", "generic-vertical-short"]
+        },
+        "metadata": {
+          "$ref": "#/definitions/publishingMetadata"
+        }
+      }
+    },
+    "scheduling": {
+      "type": "object",
+      "required": ["status", "scheduled_for"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["draft", "ready", "scheduled"],
+          "description": "Phase 1 never transitions a package beyond these inert states — no status here triggers an actual post."
+        },
+        "scheduled_for": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Reserved for a future Cloud Scheduler-driven publishing pass. Always null in Phase 1."
+        }
+      }
+    },
+    "confidenceNotes": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+        "flagged_uncertainties": { "type": "array", "items": { "type": "string" } },
+        "unresolved_conflicts": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

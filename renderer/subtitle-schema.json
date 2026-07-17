@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "forgebrain/subtitle-schema.json",
+  "title": "ForgeBrain Subtitle Result",
+  "description": "The structured output of Subtitle Generation: final, audio-reconciled subtitle segments and a render-ready subtitle file reference. Produced after Voice Generation (see voice-spec.md) and consumed by the Renderer. See subtitle-spec.md for the full process this schema supports.",
+  "type": "object",
+  "required": [
+    "topic_id",
+    "topic_title",
+    "subtitle_style",
+    "format",
+    "subtitle_file_uri",
+    "safe_region",
+    "scenes",
+    "total_duration_seconds",
+    "confidence_notes",
+    "subtitle_version",
+    "generated_at",
+    "based_on_storyboard_version",
+    "based_on_voice_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "topic_id": { "type": "string" },
+    "topic_title": { "type": "string" },
+    "subtitle_style": {
+      "type": "string",
+      "enum": ["bold-centered", "karaoke-highlight", "minimal-bottom-third", "boxed-caption"],
+      "description": "Carried from storyboard.subtitle_style."
+    },
+    "format": {
+      "type": "string",
+      "enum": ["srt", "vtt", "ass"],
+      "description": "Subtitle file format. 'ass' is required for subtitle_style: karaoke-highlight; srt/vtt suffice for the other styles — see subtitle-spec.md Section 5."
+    },
+    "subtitle_file_uri": {
+      "type": "string",
+      "description": "Storage location of the rendered subtitle file (e.g. a Cloud Storage URI). Phase 1 does not resolve or validate real paths."
+    },
+    "safe_region": {
+      "$ref": "#/definitions/safeRegion"
+    },
+    "scenes": {
+      "type": "array",
+      "description": "Per-scene reconciled subtitle segments, in the storyboard's scene_order.",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/sceneSubtitles" }
+    },
+    "total_duration_seconds": {
+      "type": "number",
+      "description": "Must equal voice_result.total_actual_duration_seconds — subtitles are timed to real audio, never to the storyboard's estimate."
+    },
+    "confidence_notes": {
+      "$ref": "#/definitions/confidenceNotes"
+    },
+    "subtitle_version": {
+      "type": "string",
+      "examples": ["1.0.0"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "based_on_storyboard_version": { "type": "string" },
+    "based_on_voice_version": { "type": "string" }
+  },
+  "definitions": {
+    "safeRegion": {
+      "type": "object",
+      "required": ["top_percent", "bottom_percent"],
+      "additionalProperties": false,
+      "properties": {
+        "top_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Percent of frame height from the top reserved as unsafe for subtitle placement (platform UI)."
+        },
+        "bottom_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Percent of frame height from the bottom reserved as unsafe for subtitle placement (platform UI)."
+        }
+      }
+    },
+    "sceneSubtitles": {
+      "type": "object",
+      "required": ["scene_id", "reconciliation_method", "segments"],
+      "additionalProperties": false,
+      "properties": {
+        "scene_id": {
+          "type": "string",
+          "description": "Matches a scene_id from the source storyboard."
+        },
+        "reconciliation_method": {
+          "type": "string",
+          "enum": ["word-alignment", "proportional-estimate"],
+          "description": "Which method (voice-spec.md Section 8, subtitle-spec.md Section 4) produced this scene's timing."
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/reconciledSegment" }
+        }
+      }
+    },
+    "reconciledSegment": {
+      "type": "object",
+      "required": ["text", "start_time", "end_time", "emphasis_words"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string" },
+        "start_time": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Absolute seconds from the start of the reel, reconciled against real audio."
+        },
+        "end_time": { "type": "number" },
+        "emphasis_words": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "confidenceNotes": {
+      "type": "object",
+      "required": ["overall_confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "flagged_uncertainties": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "unresolved_conflicts": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -3,9 +3,14 @@ package com.forgebrain.backend.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forgebrain.backend.exceptions.InvalidTopicException;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,13 +47,18 @@ class PipelineOrchestratorImplTest {
                 () -> new File(tempDir.toFile(), "memory-state.json").getAbsolutePath());
         registry.add("forgebrain.local-storage.pipeline-output-directory",
                 () -> new File(tempDir.toFile(), "output").getAbsolutePath());
+        registry.add("forgebrain.local-storage.execution-report-directory",
+                () -> new File(tempDir.toFile(), "reports").getAbsolutePath());
     }
 
     @Autowired
     private PipelineOrchestrator orchestrator;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Test
-    void runsTheFullPipelineEndToEndAndProducesAConsistentResult() {
+    void runsTheFullPipelineEndToEndAndProducesAConsistentResult() throws IOException {
         PipelineResult result = orchestrator.runFullPipeline();
 
         // On a fresh memory state, java-what-is-java is the only topic with no prerequisites.
@@ -77,6 +87,20 @@ class PipelineOrchestratorImplTest {
         assertThat(outputDir).isDirectory();
         assertThat(outputDir.listFiles()).isNotEmpty();
 
+        // A full execution report is generated with per-stage detail.
+        File reportsDir = new File(tempDir.toFile(), "reports");
+        assertThat(reportsDir).isDirectory();
+        File latestReportFile = Arrays.stream(reportsDir.listFiles())
+                .max(Comparator.comparing(File::getName))
+                .orElseThrow();
+        PipelineExecutionReport latestReport = objectMapper.readValue(latestReportFile, PipelineExecutionReport.class);
+        assertThat(latestReport.finalStatus()).isEqualTo("SUCCESS");
+        assertThat(latestReport.selectedTopic()).isEqualTo(result.topicId());
+        assertThat(latestReport.stageResults()).extracting(StageExecutionSummary::stageName)
+                .containsExactly("TOPIC_SELECTION", "RESEARCH", "LESSON", "CONTENT_DIRECTOR", "SCRIPT", "STORYBOARD");
+        assertThat(latestReport.stageResults()).allMatch(StageExecutionSummary::success);
+        assertThat(latestReport.errors()).isEmpty();
+
         // Memory now reflects that this topic is in progress, closing the loop back to memory.
         File memoryFile = new File(tempDir.toFile(), "memory-state.json");
         assertThat(memoryFile).exists();
@@ -87,5 +111,19 @@ class PipelineOrchestratorImplTest {
         // NEXT_EXECUTION.md), so no other topic's prerequisites become satisfied either. An
         // honest failure here is the correct behavior, not a bug.
         assertThrows(InvalidTopicException.class, orchestrator::runFullPipeline);
+
+        List<PipelineExecutionReport> reports = Arrays.stream(reportsDir.listFiles())
+                .map(file -> {
+                    try {
+                        return objectMapper.readValue(file, PipelineExecutionReport.class);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                })
+                .toList();
+        assertThat(reports).extracting(PipelineExecutionReport::finalStatus)
+                .contains("SUCCESS", "FAILED");
+        assertThat(reports.stream().filter(report -> "FAILED".equals(report.finalStatus())).findAny().orElseThrow()
+                .stageResults()).anyMatch(summary -> !summary.success());
     }
 }

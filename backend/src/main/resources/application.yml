@@ -49,5 +49,6 @@ forgebrain:
     curriculum-roadmap-path: "../curriculum/java-roadmap.json"
     memory-state-path: "data/memory-state.json"
     pipeline-output-directory: "data/output"
+    execution-report-directory: "reports"
   pipeline:
     run-on-startup: false

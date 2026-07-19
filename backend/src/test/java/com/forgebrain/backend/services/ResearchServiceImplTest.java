@@ -28,7 +28,8 @@ class ResearchServiceImplTest {
                 .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .findAndAddModules()
                 .build();
-        var curriculumLoader = new CurriculumLoaderImpl(objectMapper, new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused"));
+        var curriculumLoader = new CurriculumLoaderImpl(objectMapper, new LocalStorageConfig(
+                "../curriculum/java-roadmap.json", "unused", "unused", "unused"));
         researchService = new ResearchServiceImpl(curriculumLoader);
         variablesTopic = curriculumLoader.findTopic("java-variables-and-data-types").orElseThrow();
     }

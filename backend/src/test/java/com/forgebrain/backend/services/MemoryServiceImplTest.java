@@ -39,7 +39,8 @@ class MemoryServiceImplTest {
     }
 
     private MemoryServiceImpl newService() {
-        return new MemoryServiceImpl(objectMapper, new LocalStorageConfig("unused", stateFilePath, "unused"));
+        return new MemoryServiceImpl(objectMapper, new LocalStorageConfig("unused", stateFilePath, "unused",
+                "unused"));
     }
 
     @Test

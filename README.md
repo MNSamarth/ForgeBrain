@@ -77,6 +77,7 @@ This reflects the repository as of the latest backend vertical slice (`NEXT_EXEC
   - Lesson generation (`VertexAiLessonServiceImpl`)
   - Shared client (`VertexAiClientImpl`) with ADC-based auth.
 - Pipeline result persistence to local JSON artifacts.
+- Pipeline execution report generation per run under `reports/` (stage-by-stage observability).
 - Automated tests for orchestrator and stage behavior.
 
 ### Planned / Not Yet Implemented

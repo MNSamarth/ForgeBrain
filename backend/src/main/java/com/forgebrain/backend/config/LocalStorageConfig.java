@@ -21,11 +21,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                             fresh, empty state on first run if it doesn't exist.
  * @param pipelineOutputDirectory directory where completed {@code PipelineResult}s are saved,
  *                                one file per run.
+ * @param executionReportDirectory directory where pipeline execution reports are saved,
+ *                                 one JSON report per run.
  */
 @ConfigurationProperties(prefix = "forgebrain.local-storage")
 public record LocalStorageConfig(
         String curriculumRoadmapPath,
         String memoryStatePath,
-        String pipelineOutputDirectory
+        String pipelineOutputDirectory,
+        String executionReportDirectory
 ) {
 }

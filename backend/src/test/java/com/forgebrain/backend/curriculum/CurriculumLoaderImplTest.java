@@ -28,7 +28,8 @@ class CurriculumLoaderImplTest {
                 .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .findAndAddModules()
                 .build();
-        LocalStorageConfig config = new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused");
+        LocalStorageConfig config = new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused",
+                "unused");
         loader = new CurriculumLoaderImpl(objectMapper, config);
     }
 

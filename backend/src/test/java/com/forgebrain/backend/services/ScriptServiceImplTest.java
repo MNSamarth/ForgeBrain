@@ -28,7 +28,8 @@ class ScriptServiceImplTest {
                 .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .findAndAddModules()
                 .build();
-        var curriculumLoader = new CurriculumLoaderImpl(objectMapper, new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused"));
+        var curriculumLoader = new CurriculumLoaderImpl(objectMapper, new LocalStorageConfig(
+                "../curriculum/java-roadmap.json", "unused", "unused", "unused"));
         Topic topic = curriculumLoader.findTopic("java-for-loop").orElseThrow();
         var research = new ResearchServiceImpl(curriculumLoader).research("java-for-loop", topic, Topic.Difficulty.BEGINNER, 40, null);
         lesson = new LessonServiceImpl().generateLesson(research, null, null);

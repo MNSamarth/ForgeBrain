@@ -45,7 +45,7 @@ class VertexAiLessonServiceImplTest {
                 .findAndAddModules()
                 .build();
         var curriculumLoader = new CurriculumLoaderImpl(objectMapper,
-                new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused"));
+                new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused", "unused"));
         var researchService = new ResearchServiceImpl(curriculumLoader);
         Topic topic = curriculumLoader.findTopic("java-for-loop").orElseThrow();
         research = researchService.research("java-for-loop", topic, Topic.Difficulty.BEGINNER, 40, null);

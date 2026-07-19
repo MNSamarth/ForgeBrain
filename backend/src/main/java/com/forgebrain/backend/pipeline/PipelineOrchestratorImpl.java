@@ -13,8 +13,14 @@ import com.forgebrain.backend.services.MemoryService;
 import com.forgebrain.backend.services.ResearchService;
 import com.forgebrain.backend.services.ScriptService;
 import com.forgebrain.backend.services.StoryboardService;
+import com.forgebrain.backend.shared.ConfidenceNotes;
 import com.forgebrain.backend.shared.PipelineStage;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 
@@ -40,13 +46,15 @@ public class PipelineOrchestratorImpl implements PipelineOrchestrator {
     private final ScriptService scriptService;
     private final StoryboardService storyboardService;
     private final PipelineResultStore resultStore;
+    private final ReportWriter reportWriter;
 
     private final Map<String, PipelineContext> runsByTopicId = new ConcurrentHashMap<>();
 
     public PipelineOrchestratorImpl(CurriculumLoader curriculumLoader, MemoryService memoryService,
             com.forgebrain.backend.services.TopicSelector topicSelector, ResearchService researchService,
             LessonService lessonService, ContentDirectorService contentDirectorService,
-            ScriptService scriptService, StoryboardService storyboardService, PipelineResultStore resultStore) {
+            ScriptService scriptService, StoryboardService storyboardService, PipelineResultStore resultStore,
+            ReportWriter reportWriter) {
         this.curriculumLoader = curriculumLoader;
         this.memoryService = memoryService;
         this.topicSelector = topicSelector;
@@ -56,6 +64,7 @@ public class PipelineOrchestratorImpl implements PipelineOrchestrator {
         this.scriptService = scriptService;
         this.storyboardService = storyboardService;
         this.resultStore = resultStore;
+        this.reportWriter = reportWriter;
     }
 
     @Override
@@ -114,23 +123,215 @@ public class PipelineOrchestratorImpl implements PipelineOrchestrator {
 
     @Override
     public PipelineResult runFullPipeline() {
-        TopicSelectionDecision decision = topicSelector.selectNextTopic(
-                TopicSelectionDecision.Mode.NEXT_TOPIC, memoryService.loadCurrentState(), java.time.Instant.now());
+        String pipelineId = UUID.randomUUID().toString();
+        Instant executionStart = Instant.now();
+        List<StageExecutionSummary> stageResults = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+        String selectedTopic = null;
+        String finalStatus = "FAILED";
+        PipelineContext context = null;
+        Exception pipelineException = null;
 
-        PipelineContext context = startRun(decision);
-        context.status(PipelineRunStatus.IN_PROGRESS);
-
-        int iterations = 0;
-        while (context.storyboard() == null) {
-            if (++iterations > MAX_ADVANCE_ITERATIONS) {
-                throw new PipelineStageException(String.valueOf(context.currentStage()),
-                        "Pipeline did not reach a storyboard after " + MAX_ADVANCE_ITERATIONS + " advance() calls — likely stuck.");
+        try {
+            MemoryState currentMemory = memoryService.loadCurrentState();
+            Instant stageStart = Instant.now();
+            TopicSelectionDecision decision = null;
+            try {
+                decision = topicSelector.selectNextTopic(
+                        TopicSelectionDecision.Mode.NEXT_TOPIC, currentMemory, Instant.now());
+                selectedTopic = decision.selectedTopicId();
+                context = startRun(decision);
+                context.status(PipelineRunStatus.IN_PROGRESS);
+                stageResults.add(new StageExecutionSummary(
+                        PipelineStage.TOPIC_SELECTION.name(),
+                        Duration.between(stageStart, Instant.now()),
+                        true,
+                        "mode=NEXT_TOPIC, tracked_topics=" + currentMemory.topics().size(),
+                        "selected_topic_id=" + decision.selectedTopicId() + ", score=" + decision.score(),
+                        false,
+                        decision.score() == null ? "unknown" : String.valueOf(decision.score()),
+                        null));
+            } catch (Exception e) {
+                stageResults.add(new StageExecutionSummary(
+                        PipelineStage.TOPIC_SELECTION.name(),
+                        Duration.between(stageStart, Instant.now()),
+                        false,
+                        "mode=NEXT_TOPIC, tracked_topics=" + currentMemory.topics().size(),
+                        "topic selection failed",
+                        false,
+                        "unknown",
+                        summarizeException(e)));
+                errors.add("TOPIC_SELECTION: " + summarizeException(e));
+                throw e;
             }
-            advance(context);
-        }
 
-        PipelineResult result = PipelineResult.fromContext(context);
-        resultStore.save(result);
-        return result;
+            int iterations = 0;
+            while (context.storyboard() == null) {
+                if (++iterations > MAX_ADVANCE_ITERATIONS) {
+                    throw new PipelineStageException(String.valueOf(context.currentStage()),
+                            "Pipeline did not reach a storyboard after " + MAX_ADVANCE_ITERATIONS + " advance() calls — likely stuck.");
+                }
+                PipelineStage pendingStage = nextPendingStage(context);
+                Instant perStageStart = Instant.now();
+                String inputSummary = stageInputSummary(pendingStage, context);
+                try {
+                    advance(context);
+                    StageExecutionSummary summary = successSummaryForStage(
+                            pendingStage, perStageStart, inputSummary, context);
+                    stageResults.add(summary);
+                    if (summary.fallbackUsed()) {
+                        warnings.add(pendingStage.name() + " used deterministic fallback path.");
+                    }
+                } catch (Exception e) {
+                    stageResults.add(new StageExecutionSummary(
+                            pendingStage.name(),
+                            Duration.between(perStageStart, Instant.now()),
+                            false,
+                            inputSummary,
+                            "stage failed",
+                            false,
+                            "unknown",
+                            summarizeException(e)));
+                    errors.add(pendingStage.name() + ": " + summarizeException(e));
+                    throw e;
+                }
+            }
+
+            PipelineResult result = PipelineResult.fromContext(context);
+            resultStore.save(result);
+            finalStatus = "SUCCESS";
+            return result;
+        } catch (Exception e) {
+            pipelineException = e;
+            throw e;
+        } finally {
+            PipelineExecutionReport report = new PipelineExecutionReport(
+                    pipelineId,
+                    executionStart,
+                    Instant.now(),
+                    Duration.between(executionStart, Instant.now()),
+                    selectedTopic,
+                    List.copyOf(stageResults),
+                    finalStatus,
+                    List.copyOf(warnings),
+                    List.copyOf(errors));
+            try {
+                reportWriter.write(report);
+            } catch (RuntimeException reportWriteException) {
+                if (pipelineException != null) {
+                    pipelineException.addSuppressed(reportWriteException);
+                } else {
+                    throw reportWriteException;
+                }
+            }
+        }
+    }
+
+    private PipelineStage nextPendingStage(PipelineContext context) {
+        if (context.researchResult() == null) {
+            return PipelineStage.RESEARCH;
+        }
+        if (context.lesson() == null) {
+            return PipelineStage.LESSON;
+        }
+        if (context.contentStrategy() == null) {
+            return PipelineStage.CONTENT_DIRECTOR;
+        }
+        if (context.script() == null) {
+            return PipelineStage.SCRIPT;
+        }
+        if (context.storyboard() == null) {
+            return PipelineStage.STORYBOARD;
+        }
+        return context.currentStage();
+    }
+
+    private String stageInputSummary(PipelineStage stage, PipelineContext context) {
+        return switch (stage) {
+            case RESEARCH -> "topic_id=" + context.topicId();
+            case LESSON -> "research_version=" + context.researchResult().researchVersion();
+            case CONTENT_DIRECTOR -> "lesson_version=" + context.lesson().lessonVersion();
+            case SCRIPT -> "lesson_version=" + context.lesson().lessonVersion()
+                    + ", content_director_version=" + context.contentStrategy().contentDirectorVersion();
+            case STORYBOARD -> "script_version=" + context.script().scriptVersion();
+            default -> "n/a";
+        };
+    }
+
+    private StageExecutionSummary successSummaryForStage(PipelineStage stage, Instant stageStart,
+            String inputSummary, PipelineContext context) {
+        return switch (stage) {
+            case RESEARCH -> new StageExecutionSummary(
+                    stage.name(),
+                    Duration.between(stageStart, Instant.now()),
+                    true,
+                    inputSummary,
+                    "research_version=" + context.researchResult().researchVersion()
+                            + ", core_concepts=" + context.researchResult().coreConcepts().size(),
+                    context.researchResult().researchVersion().contains("heuristic"),
+                    confidenceValue(context.researchResult().confidenceNotes()),
+                    null);
+            case LESSON -> new StageExecutionSummary(
+                    stage.name(),
+                    Duration.between(stageStart, Instant.now()),
+                    true,
+                    inputSummary,
+                    "lesson_version=" + context.lesson().lessonVersion()
+                            + ", key_points=" + context.lesson().keyPoints().size(),
+                    context.lesson().lessonVersion().contains("heuristic"),
+                    confidenceValue(context.lesson().confidenceNotes()),
+                    null);
+            case CONTENT_DIRECTOR -> new StageExecutionSummary(
+                    stage.name(),
+                    Duration.between(stageStart, Instant.now()),
+                    true,
+                    inputSummary,
+                    "content_director_version=" + context.contentStrategy().contentDirectorVersion()
+                            + ", hook_type=" + context.contentStrategy().hookType(),
+                    false,
+                    confidenceValue(context.contentStrategy().confidenceNotes()),
+                    null);
+            case SCRIPT -> new StageExecutionSummary(
+                    stage.name(),
+                    Duration.between(stageStart, Instant.now()),
+                    true,
+                    inputSummary,
+                    "script_version=" + context.script().scriptVersion()
+                            + ", word_count=" + context.script().wordCount(),
+                    false,
+                    confidenceValue(context.script().confidenceNotes()),
+                    null);
+            case STORYBOARD -> new StageExecutionSummary(
+                    stage.name(),
+                    Duration.between(stageStart, Instant.now()),
+                    true,
+                    inputSummary,
+                    "storyboard_version=" + context.storyboard().storyboardVersion()
+                            + ", scenes=" + context.storyboard().sceneCount(),
+                    false,
+                    confidenceValue(context.storyboard().confidenceNotes()),
+                    null);
+            default -> new StageExecutionSummary(
+                    stage.name(),
+                    Duration.between(stageStart, Instant.now()),
+                    true,
+                    inputSummary,
+                    "completed",
+                    false,
+                    "unknown",
+                    null);
+        };
+    }
+
+    private static String summarizeException(Exception e) {
+        return e.getClass().getSimpleName() + ": " + e.getMessage();
+    }
+
+    private static String confidenceValue(ConfidenceNotes confidenceNotes) {
+        if (confidenceNotes == null || confidenceNotes.overallConfidence() == null) {
+            return "unknown";
+        }
+        return confidenceNotes.overallConfidence().name();
     }
 }

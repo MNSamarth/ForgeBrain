@@ -45,7 +45,7 @@ class VertexAiResearchServiceImplTest {
                 .findAndAddModules()
                 .build();
         curriculumLoader = new CurriculumLoaderImpl(objectMapper,
-                new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused"));
+                new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused", "unused"));
         variablesTopic = curriculumLoader.findTopic("java-variables-and-data-types").orElseThrow();
         vertexAiClient = mock(VertexAiClient.class);
     }

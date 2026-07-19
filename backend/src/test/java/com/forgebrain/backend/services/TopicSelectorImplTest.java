@@ -37,7 +37,8 @@ class TopicSelectorImplTest {
                 .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .findAndAddModules()
                 .build();
-        var curriculumLoader = new CurriculumLoaderImpl(objectMapper, new LocalStorageConfig("../curriculum/java-roadmap.json", "unused", "unused"));
+        var curriculumLoader = new CurriculumLoaderImpl(objectMapper, new LocalStorageConfig(
+                "../curriculum/java-roadmap.json", "unused", "unused", "unused"));
         selector = new TopicSelectorImpl(curriculumLoader);
     }
 

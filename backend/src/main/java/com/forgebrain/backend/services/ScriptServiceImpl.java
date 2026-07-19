@@ -13,7 +13,6 @@ import com.forgebrain.backend.shared.ConfidenceNotes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Component;
 
 /**
  * Template-based implementation of {@link ScriptService}. Deterministically turns a
@@ -23,8 +22,12 @@ import org.springframework.stereotype.Component;
  * concatenation of every structured field, {@code wordCount} is the real word count of that
  * string, and {@code estimatedDurationSeconds} follows the 2.5 words/second formula from
  * brain/script-spec.md Section 8 — nothing here is asserted, all three are computed.
+ *
+ * <p>Not a Spring bean: {@link VertexAiScriptServiceImpl} is the {@link ScriptService} bean and
+ * constructs this directly as its fallback, exactly as {@link ResearchServiceImpl}, {@link
+ * LessonServiceImpl}, and {@link ContentDirectorServiceImpl} are used by their respective Vertex
+ * AI implementations.
  */
-@Component
 public class ScriptServiceImpl implements ScriptService {
 
     private static final double WORDS_PER_SECOND = 2.5;

@@ -59,7 +59,7 @@ class VertexAiContentDirectorServiceImplTest {
 
     private static VertexAiConfig config(String projectId, String contentDirectorModel) {
         return new VertexAiConfig(projectId, "us-central1", "", "", "", contentDirectorModel,
-                0.4, 2048, "application/json", 0.4, 2048, "application/json");
+                0.4, 2048, "application/json", 0.4, 2048, "application/json", 0.4, 2048, "application/json");
     }
 
     @Test

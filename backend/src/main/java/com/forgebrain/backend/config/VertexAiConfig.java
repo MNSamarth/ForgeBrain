@@ -26,6 +26,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                                          {@code null} to use the SDK default
  * @param contentDirectorResponseMimeType  response MIME type requested for content director
  *                                          generation, e.g. {@code "application/json"}
+ * @param scriptTemperature                sampling temperature for script generation, or
+ *                                          {@code null} to use the SDK default
+ * @param scriptMaxOutputTokens            output token cap for script generation, or {@code null}
+ *                                          to use the SDK default
+ * @param scriptResponseMimeType           response MIME type requested for script generation,
+ *                                          e.g. {@code "application/json"}
  */
 @ConfigurationProperties(prefix = "forgebrain.vertex-ai")
 public record VertexAiConfig(
@@ -40,6 +46,9 @@ public record VertexAiConfig(
         String lessonResponseMimeType,
         Double contentDirectorTemperature,
         Integer contentDirectorMaxOutputTokens,
-        String contentDirectorResponseMimeType
+        String contentDirectorResponseMimeType,
+        Double scriptTemperature,
+        Integer scriptMaxOutputTokens,
+        String scriptResponseMimeType
 ) {
 }

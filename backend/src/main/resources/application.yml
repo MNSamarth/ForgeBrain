@@ -25,7 +25,7 @@ forgebrain:
     location: "us-central1"
     research-model: "gemini-2.0-flash-001"
     lesson-model: "gemini-2.0-flash-001"
-    script-model: ""
+    script-model: "gemini-2.0-flash-001"
     content-director-model: "gemini-2.0-flash-001"
     lesson-temperature: 0.4
     lesson-max-output-tokens: 2048
@@ -33,6 +33,9 @@ forgebrain:
     content-director-temperature: 0.4
     content-director-max-output-tokens: 2048
     content-director-response-mime-type: "application/json"
+    script-temperature: 0.4
+    script-max-output-tokens: 2048
+    script-response-mime-type: "application/json"
   cloud-storage:
     media-bucket: ""
     assets-bucket: ""

@@ -33,7 +33,7 @@ Two organizing principles are layered on top of each other, both requested expli
 | `vertex` | The Vertex AI integration seam every generative service is expected to call through. |
 | `memory` | `MemoryQueries` — the six standard lookups from `memory/README.md`'s decision table, promoted to named methods. |
 | `curriculum` | `CurriculumLoader`, `RoadmapLevel` — reading `curriculum/java-roadmap.json`. |
-| `rendering` | `SceneRenderInstruction`, `RenderEngine` — the seam a real rendering technology would plug into. No rendering code. |
+| `rendering` | The rendering foundation: `RenderPlan`, `SceneRenderPlan`, `RenderAssetManifest`, `SubtitleTimeline`, `RenderPlanBuilder`, `AssetCollector`, `RenderValidator` — plus the still-unimplemented `SceneRenderInstruction`/`RenderEngine` seam. See "Rendering Foundation" below. No rendering/encoding code anywhere in this package. |
 | `analytics` | `PerformanceSnapshot`, `StrategyPerformanceAggregate` — see `analytics/analytics-spec.md`. Not active in Phase 1. |
 | `publishing` | `PlatformFormatter` — per-platform metadata formatting. |
 
@@ -125,9 +125,9 @@ or the same heuristic `LessonServiceImpl` uses) before the prompt is built, not 
 failed API call, or a response that doesn't parse into `VertexAiLessonContent` all fall back to
 `LessonServiceImpl`'s original heuristic narrowing. Real, exercised path, not a stub.
 
-**What remains heuristic**: Script and Storyboard are still deterministic template/rule-based
-stages — unchanged by this or the research stage's Vertex AI integration. Content Director is now
-Vertex AI-backed too — see "Vertex AI Content Director Stage" below.
+**What remains heuristic**: Storyboard is still a deterministic, mechanical stage — unchanged by
+any of this. Content Director and Script are both Vertex AI-backed too — see "Vertex AI Content
+Director Stage" and "Vertex AI Script Stage" below.
 
 **Configuration**: `forgebrain.vertex-ai.lesson-temperature` (default `0.4`),
 `lesson-max-output-tokens` (default `2048`), and `lesson-response-mime-type` (default
@@ -163,13 +163,119 @@ without a custom deserializer.
 `VertexAiContentStrategy` all fall back to `ContentDirectorServiceImpl`'s original deterministic
 rule-based strategy. Real, exercised path, not a stub.
 
-**What remains heuristic**: Script and Storyboard are still deterministic template/rule-based
-stages — unchanged by this or the research/lesson stages' Vertex AI integration.
+**What remains heuristic**: Storyboard is still a deterministic, mechanical stage — unchanged by
+this. Script is now Vertex AI-backed too — see "Vertex AI Script Stage" below.
 
 **Configuration**: `forgebrain.vertex-ai.content-director-temperature` (default `0.4`),
 `content-director-max-output-tokens` (default `2048`), and
 `content-director-response-mime-type` (default `application/json`) tune generation for this
 stage specifically. No new local setup beyond the research stage's ADC steps above.
+
+## Vertex AI Script Stage
+
+The script stage (`services/VertexAiScriptServiceImpl`, the `ScriptService` bean) calls the same
+`VertexAiClient` (model configured separately via `forgebrain.vertex-ai.script-model`, defaulting
+to `gemini-2.0-flash-001`) to turn a committed `Lesson` and its binding `ContentStrategy` into
+actual spoken narration and on-screen text: `hook`, `introLine`, `mainScript`,
+`codeNarration.spokenLines`/`focusLine`, `recapLine`, `ctaLine`, `sceneText`, `tone`, and
+`confidenceNotes` — see `brain/script-spec.md` Section 3 for the binding hook/teaching-style/
+pacing/code-style/CTA mapping the prompt enforces.
+
+**Deliberately not requested from the model**: `hookType`/`teachingStyle` are echoed verbatim
+from the `ContentStrategy` rather than asked of the model, because Section 3 requires they "must
+match exactly" — the Script Generator doesn't get to choose a different hook or posture than what
+the Content Director already decided. `codeNarration.codeSnippet` is carried directly from the
+lesson's own `core_example.code_sketch` rather than regenerated, so the on-screen code can never
+drift from what the lesson actually committed to. `fullSpokenScript`, `wordCount`,
+`estimatedDurationSeconds`, and `subtitleSegments` are all computed deterministically from the
+model's structured fields, the same way `ScriptServiceImpl` computes them — asking the model to
+also produce four mutually-dependent derived values invites exactly the kind of internal
+inconsistency `brain/script-spec.md` Section 9 explicitly rules out (`full_spoken_script` must
+reconstruct byte-for-byte from the structured fields; `subtitle_segments` must concatenate back
+to it losslessly).
+
+**Fallback**: identical pattern to research, lesson, and content director — missing
+`project-id`/`script-model` config, a failed API call, or a response that doesn't parse into
+`VertexAiScriptContent` all fall back to `ScriptServiceImpl`'s original deterministic templates.
+Real, exercised path, not a stub.
+
+**What remains heuristic**: Storyboard is the only stage left that's still deterministic and
+mechanical — it groups the script's own already-validated segments into scenes rather than
+generating anything new, so there's little a model would add there.
+
+**Configuration**: `forgebrain.vertex-ai.script-temperature` (default `0.4`),
+`script-max-output-tokens` (default `2048`), and `script-response-mime-type` (default
+`application/json`) tune generation for this stage specifically. No new local setup beyond the
+research stage's ADC steps above.
+
+## Rendering Foundation
+
+The AI content pipeline ends at `Storyboard`. Everything from there to a finished video is a
+separate concern — production, not decision-making — and this is its architecture, not its
+implementation:
+
+```
+Storyboard
+    │  RenderPlanBuilder (pure transformation, no rendering)
+    ▼
+RenderPlan  ──────────────►  AssetCollector  ──────────────►  RenderAssetManifest
+    │                                                          (every asset the plan needs,
+    │  RenderValidator                                          deduplicated + categorized)
+    ▼
+RenderValidationResult
+    │
+    ▼  (not built yet — see "What the Renderer Still Needs" below)
+Renderer (RenderEngine / SceneRenderInstruction)
+```
+
+**`RenderPlan`** (`rendering/RenderPlan.java`) is everything one reel needs to render: video
+`dimensions`/`fps` (derived from `Storyboard.aspectRatio`), `totalDurationSeconds`, one
+`SceneRenderPlan` per scene, a reel-wide `FontSet`, a `SubtitleTimeline`, an `AudioPlan`, the
+transition between every consecutive scene pair, and any reel-global asset references (e.g. a
+watermark). **`SceneRenderPlan`** (`rendering/SceneRenderPlan.java`) is one scene's complete
+blueprint: timing, a `BackgroundSpec`, on-screen `TextLayer`s, an optional `CodeLayer`, animation
+instructions carried from the storyboard's `motionNotes`, which `SubtitleTimeline` cues belong to
+it, and which assets it references. **`SubtitleTimeline`** (`rendering/SubtitleTimeline.java`) is
+the reel's captions as one flat, chronologically-ordered list of cues, independent of scene
+boundaries but still traceable back to the scene that produced each one.
+
+**`RenderPlanBuilder`** (`rendering/RenderPlanBuilder.java`) does the `Storyboard` → `RenderPlan`
+transformation — pure, deterministic, no generative calls, exactly one input and one output, no
+video produced. Where the storyboard doesn't yet carry real production data (no narration audio
+file, since Voice Generation isn't implemented; no resolved asset URIs, since Asset Management
+isn't implemented), the builder emits deterministic placeholder references (e.g.
+`"voiceover/" + topicId`, or a `RenderStyle`-driven font/music table) rather than nulls, so a
+`RenderPlan` is always complete enough for `RenderValidator` to meaningfully check.
+
+**`AssetCollector`** (`rendering/AssetCollector.java`) walks a built `RenderPlan` end to end —
+its fonts, its audio track, its global refs, and every scene's own asset references — and
+deduplicates them into one **`RenderAssetManifest`** (`rendering/RenderAssetManifest.java`), one
+entry per distinct `(category, ref)` pair with every scene that uses it recorded in
+`usedBySceneIds` (empty for reel-wide assets like background music). This is deliberately a
+different type from `models/AssetManifest.java` — that one is Asset Management's own
+pipeline-stage *output*, resolving a storyboard's abstract style names against a real catalog
+that doesn't exist yet (see `TODO.md` 5.2); `RenderAssetManifest` is the renderer's own
+bookkeeping of what a `RenderPlan` references, independent of whether anything can resolve those
+references to a real file yet.
+
+**`RenderValidator`** (`rendering/RenderValidator.java`) checks a `RenderPlan` for internal
+consistency before anything downstream would act on it: invalid dimensions/fps/duration,
+overlapping scenes, timing that doesn't add up (`duration != endTime - startTime`), a code layer
+with no asset references, and subtitle problems (an entirely empty timeline is a warning; a
+blank cue's text is an error). Every check runs in one pass — a `RenderValidationResult` reports
+every issue found, not just the first, with `valid()` true iff nothing reached `ERROR` severity.
+
+### What the Renderer Still Needs
+
+This is the planning layer, not the renderer. Still missing, in the order `TODO.md` already
+tracks them: real Voice Generation output (so `AudioPlan.voiceoverTrackRef` becomes a real file,
+not a placeholder), real Asset Management output (so font/music/watermark refs resolve to real
+URIs instead of style-driven names), and — the largest remaining piece — an actual
+`RenderEngine` implementation that consumes a validated `RenderPlan` (most likely via a future
+`SceneRenderInstruction` translation step) and produces a real `VideoPackage`. No FFmpeg, no
+Remotion, and no video export exist anywhere in this codebase yet; this rendering foundation
+exists so that whichever technology is chosen later has a stable, already-validated input to
+consume instead of a raw `Storyboard`.
 
 ## What's Deliberately Not Here
 

@@ -8,15 +8,17 @@ import com.forgebrain.backend.shared.ConfidenceNotes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Component;
 
 /**
  * Heuristic implementation of {@link LessonService}: narrows a {@link ResearchResult} into one
  * single-concept {@link Lesson}, enforcing the "One of Everything" rule from
  * brain/lesson-spec.md Section 4 by construction — one {@code coreExample}, one
  * {@code analogy}, one {@code beginnerTakeaway}, one {@code retentionHook}.
+ *
+ * <p>Not a Spring bean: {@link VertexAiLessonServiceImpl} is the {@link LessonService} bean
+ * wired into the pipeline and holds one instance of this class as its deterministic fallback,
+ * used whenever Vertex AI is unavailable.
  */
-@Component
 public class LessonServiceImpl implements LessonService {
 
     private static final String LESSON_VERSION = "1.0.0-heuristic";

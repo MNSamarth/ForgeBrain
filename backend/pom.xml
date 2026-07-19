@@ -27,16 +27,20 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!-- Version pin only. No Google Cloud SDK dependencies are declared yet — every
-             config/vertex/pipeline class in this project is a placeholder with no runtime
-             GCP client wired in. See backend/README.md Section 5. -->
+        <!-- Version pin retained for reference; not otherwise used. -->
         <spring-cloud-gcp.version>5.4.2</spring-cloud-gcp.version>
+        <google-cloud-vertexai.version>1.52.0</google-cloud-vertexai.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-vertexai</artifactId>
+            <version>${google-cloud-vertexai.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

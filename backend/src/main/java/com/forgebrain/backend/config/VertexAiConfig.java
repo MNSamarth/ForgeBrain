@@ -8,11 +8,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * assumed to be handled by Application Default Credentials in the real Cloud Run environment,
  * never a key embedded here.
  *
- * @param projectId     GCP project ID (empty placeholder in every committed profile)
- * @param location      Vertex AI region, e.g. "us-central1"
- * @param researchModel model identifier used by {@link com.forgebrain.backend.services.ResearchService}
- * @param lessonModel   model identifier used by {@link com.forgebrain.backend.services.LessonService}
- * @param scriptModel   model identifier used by {@link com.forgebrain.backend.services.ScriptService}
+ * @param projectId              GCP project ID (empty placeholder in every committed profile)
+ * @param location               Vertex AI region, e.g. "us-central1"
+ * @param researchModel          model identifier used by {@link com.forgebrain.backend.services.ResearchService}
+ * @param lessonModel            model identifier used by {@link com.forgebrain.backend.services.LessonService}
+ * @param scriptModel            model identifier used by {@link com.forgebrain.backend.services.ScriptService}
+ * @param lessonTemperature      sampling temperature for lesson generation, or {@code null} to
+ *                               use the SDK default
+ * @param lessonMaxOutputTokens  output token cap for lesson generation, or {@code null} to use
+ *                               the SDK default
+ * @param lessonResponseMimeType response MIME type requested for lesson generation, e.g.
+ *                               {@code "application/json"}
  */
 @ConfigurationProperties(prefix = "forgebrain.vertex-ai")
 public record VertexAiConfig(
@@ -20,6 +26,9 @@ public record VertexAiConfig(
         String location,
         String researchModel,
         String lessonModel,
-        String scriptModel
+        String scriptModel,
+        Double lessonTemperature,
+        Integer lessonMaxOutputTokens,
+        String lessonResponseMimeType
 ) {
 }

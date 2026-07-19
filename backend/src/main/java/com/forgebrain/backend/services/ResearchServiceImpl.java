@@ -9,7 +9,6 @@ import com.forgebrain.backend.shared.ConfidenceNotes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Component;
 
 /**
  * Heuristic, curriculum-sourced implementation of {@link ResearchService} — see
@@ -18,10 +17,12 @@ import org.springframework.stereotype.Component;
  * {@code example_ideas} (already-curated, human-reviewed content — not invented) into a
  * lesson-ready brief, rather than calling an LLM. Every field this class cannot responsibly
  * generate from that source material (e.g. {@code advancedNotes}) is left empty rather than
- * fabricated — see the class-level note in {@code NEXT_EXECUTION.md} on wiring a real Vertex
- * AI-backed implementation later behind this same interface.
+ * fabricated.
+ *
+ * <p>Not a Spring bean: {@link VertexAiResearchServiceImpl} is the {@link ResearchService} bean
+ * wired into the pipeline and holds one instance of this class as its deterministic fallback,
+ * used whenever Vertex AI is unavailable.
  */
-@Component
 public class ResearchServiceImpl implements ResearchService {
 
     private static final String RESEARCH_VERSION = "1.0.0-heuristic";

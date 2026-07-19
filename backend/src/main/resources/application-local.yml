@@ -1,6 +1,14 @@
 # Local development overrides. No real credentials or project identifiers belong here —
 # see docs/CONFIGURATION.md Section 5. This file only demonstrates that environment-specific
 # values are meant to differ per profile, not per code branch.
+#
+# To exercise the Vertex AI research stage locally instead of its deterministic fallback:
+#   1. gcloud auth application-default login
+#   2. gcloud config set project <your-gcp-project-id>
+#   3. Supply forgebrain.vertex-ai.project-id and forgebrain.vertex-ai.location as environment
+#      variables (FORGEBRAIN_VERTEX-AI_PROJECT-ID / FORGEBRAIN_VERTEX-AI_LOCATION) or a
+#      git-ignored application-local.yml override — never commit them here.
+# See backend/README.md for the full walkthrough.
 
 forgebrain:
   application:

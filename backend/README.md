@@ -4,7 +4,8 @@ A Spring Boot project structure for the pipeline described in [`../docs/PIPELINE
 
 ## Stack
 
-Java 17, Spring Boot 3.3, Maven. No Google Cloud SDK dependency is declared yet — see Section 5.
+Java 17, Spring Boot 3.3, Maven. `com.google.cloud:google-cloud-vertexai` is declared for the
+research stage — see Section 5 and "Vertex AI Research Stage" below.
 
 ## Package Structure
 
@@ -58,14 +59,81 @@ A controller calling a `services` interface with no implementation behind it wou
 
 Every `services` interface takes explicit, named parameters (e.g. `ResearchService.research(String selectedTopicId, Topic curriculumContext, ...)`) rather than one shared context object — reading a method signature should tell you exactly what that stage needs, matching its `*-spec.md`'s Inputs table. `PipelineContext` (in `pipeline`) exists at a different altitude: it's the orchestrator's own bookkeeping object, accumulating every stage's output as one topic moves through all fourteen stages, and the shape `PipelineRunEntity` would persist. Services don't take it; the orchestrator that calls services does.
 
-### 5. No Google Cloud SDK dependency yet
+### 5. Google Cloud SDK: Vertex AI only, so far
 
-`pom.xml` declares only Spring Web, Validation, and the configuration-annotation processor — deliberately not `spring-cloud-gcp` or any Vertex AI/Firestore/Cloud Storage client library. Adding a real cloud dependency implies a real integration is imminent; this phase is architecture only. `config`, `vertex`, `repositories`, and `entities` are all shaped to make that addition straightforward later without restructuring — see `TODO.md`.
+`pom.xml` declares `com.google.cloud:google-cloud-vertexai`, used by `vertex/VertexAiClientImpl`
+for the research and lesson stages (see "Vertex AI Research Stage" and "Vertex AI Lesson Stage"
+below). No other Google Cloud client library (`spring-cloud-gcp`, Firestore, Cloud Storage) is
+declared yet — `repositories` and `entities` are still shaped for that addition without
+restructuring, but nothing beyond research and lesson calls a real GCP API in this phase.
 
 ### 6. Verification status
 
 This project could not be built with Maven in the environment this scaffold was produced in (Maven is not installed there). Instead: every file in `models`, `shared`, `exceptions`, `services`, `entities`, `repositories`, and the seven domain packages (75 files total) — the entire subset with zero external dependencies — was compiled directly with `javac` and produced zero errors. `pom.xml` was checked for well-formed XML and balanced tags; both `application.yml` files were checked for valid YAML structure (no tabs, consistent indentation). The Spring-dependent files (`config`, `controllers`, `dto`, `BackendApplication`, the test) follow the same conventions but were not independently compiled — **run `mvn compile` (or `mvn test`) as the first verification step** before building on this scaffold.
 
+## Vertex AI Research Stage
+
+The research stage (`services/VertexAiResearchServiceImpl`, the `ResearchService` bean) calls
+Google Vertex AI to generate the parts of a topic brief that benefit from generation —
+`topicSummary`, `coreConcepts`, `simpleAnalogy`, `beginnerExplanation`, `advancedNotes`,
+`safetyNotes`. Every other `ResearchResult` field (`learningObjective`, `commonMisconceptions`,
+`codeExampleIdeas`, `relatedTopics`, `prerequisites`, ...) still comes straight from the
+curriculum's own curated data, unchanged from the original heuristic approach.
+
+**How it works**: `ResearchPromptBuilder` builds a prompt grounded in the curriculum's
+`learning_objective`/`common_mistakes`/`example_ideas`, asking for a strict JSON response.
+`VertexAiClientImpl` (`vertex/`) opens a `VertexAI` client with `GenerationConfig`'s
+`responseMimeType` set to `application/json` and calls `GenerativeModel.generateContent`,
+authenticating via Application Default Credentials — no API keys in this repo.
+`VertexAiResearchServiceImpl` parses the JSON response into `VertexResearchContent` with the
+shared snake_case `ObjectMapper` and assembles the full `ResearchResult`.
+
+**Fallback**: any failure — missing `project-id`/`research-model` config, a failed API call, or
+a response that doesn't parse into `VertexResearchContent` — falls back to
+`ResearchServiceImpl`'s original heuristic brief. This is a real, tested code path, not just a
+comment: it's what runs in any environment without GCP credentials configured, including this
+project's own test suite.
+
+**Local setup**:
+
+```bash
+gcloud auth application-default login
+gcloud config set project <your-gcp-project-id>
+```
+
+Then supply `forgebrain.vertex-ai.project-id` and `forgebrain.vertex-ai.location` as environment
+variables (`FORGEBRAIN_VERTEX-AI_PROJECT-ID`, `FORGEBRAIN_VERTEX-AI_LOCATION`) or a git-ignored
+local YAML override — never commit real project IDs. `forgebrain.vertex-ai.research-model`
+already defaults to `gemini-2.0-flash-001` in `application.yml`.
+
+## Vertex AI Lesson Stage
+
+The lesson stage (`services/VertexAiLessonServiceImpl`, the `LessonService` bean) calls the same
+`VertexAiClient` (model configured separately via `forgebrain.vertex-ai.lesson-model`, also
+defaulting to `gemini-2.0-flash-001`) to narrow a research brief into the single-concept lesson
+blueprint required by `brain/lesson-spec.md` Section 4's "One of Everything" rule:
+`lessonObjective`, `lessonSummary`, `keyPoints`, `stepByStepExplanation`, `coreExample`,
+`analogy`, `commonMistakes`, `whatToAvoidSaying`, `beginnerTakeaway`, `retentionHook`,
+`visualNotes`, and `confidenceNotes` all come from the model this time — unlike research, the
+narrowing decision itself (which concept, which example, which mistake) is genuinely a judgment
+call the model is asked to make and justify via `confidenceNotes.flaggedUncertainties`.
+`topicId`/`topicTitle`/`audienceLevel`/`targetDurationSeconds` are still carried straight from
+the research brief, and `teachingStyle` is still decided deterministically (the caller's request,
+or the same heuristic `LessonServiceImpl` uses) before the prompt is built, not by the model.
+
+**Fallback**: identical pattern to research — missing `project-id`/`lesson-model` config, a
+failed API call, or a response that doesn't parse into `VertexAiLessonContent` all fall back to
+`LessonServiceImpl`'s original heuristic narrowing. Real, exercised path, not a stub.
+
+**What remains heuristic**: Content Director, Script, and Storyboard are all still deterministic
+template/rule-based stages — unchanged by this or the research stage's Vertex AI integration.
+
+**Configuration**: `forgebrain.vertex-ai.lesson-temperature` (default `0.4`),
+`lesson-max-output-tokens` (default `2048`), and `lesson-response-mime-type` (default
+`application/json`) tune generation for this stage specifically; `VertexAiPromptRequest` carries
+them through to `VertexAiClientImpl`'s `GenerationConfig` when set, falling back to the SDK's
+defaults when null. No new local setup beyond the research stage's ADC steps above.
+
 ## What's Deliberately Not Here
 
-Per this phase's explicit rules: no Docker, no Kubernetes, no deployment/CI infrastructure, no real Google Cloud client calls, no authentication, and no service implementation classes (every `services` interface has zero implementing classes — "fake implementations" were explicitly out of scope). See the repository root [`TODO.md`](../TODO.md) for the tracked path from here.
+Per this phase's explicit rules: no Docker, no Kubernetes, no deployment/CI infrastructure, no publishing/rendering/auto-upload, and no authentication beyond Application Default Credentials for Vertex AI (see "Vertex AI Research Stage" above — this is the one real Google Cloud client integration so far; see `NEXT_EXECUTION.md` for what else this scaffold now implements). See the repository root [`TODO.md`](../TODO.md) for the tracked path from here.

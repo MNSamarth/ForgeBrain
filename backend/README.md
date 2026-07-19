@@ -125,14 +125,51 @@ or the same heuristic `LessonServiceImpl` uses) before the prompt is built, not 
 failed API call, or a response that doesn't parse into `VertexAiLessonContent` all fall back to
 `LessonServiceImpl`'s original heuristic narrowing. Real, exercised path, not a stub.
 
-**What remains heuristic**: Content Director, Script, and Storyboard are all still deterministic
-template/rule-based stages — unchanged by this or the research stage's Vertex AI integration.
+**What remains heuristic**: Script and Storyboard are still deterministic template/rule-based
+stages — unchanged by this or the research stage's Vertex AI integration. Content Director is now
+Vertex AI-backed too — see "Vertex AI Content Director Stage" below.
 
 **Configuration**: `forgebrain.vertex-ai.lesson-temperature` (default `0.4`),
 `lesson-max-output-tokens` (default `2048`), and `lesson-response-mime-type` (default
 `application/json`) tune generation for this stage specifically; `VertexAiPromptRequest` carries
 them through to `VertexAiClientImpl`'s `GenerationConfig` when set, falling back to the SDK's
 defaults when null. No new local setup beyond the research stage's ADC steps above.
+
+## Vertex AI Content Director Stage
+
+The content director stage (`services/VertexAiContentDirectorServiceImpl`, the
+`ContentDirectorService` bean) calls the same `VertexAiClient` (model configured separately via
+`forgebrain.vertex-ai.content-director-model`, defaulting to `gemini-2.0-flash-001`) to make all
+seven directorial decisions over a committed `Lesson`: `hookType`/`hookReason`,
+`teachingStyle`/`teachingStyleReason`, `emotionalGoal`/`emotionalGoalReason`,
+`pacing`/`pacingReason`/`scenePacing`, `visualStyle`/`supportingVisuals`/`visualStyleReason`,
+`codeStyle`/`codeStyleReason`, `ctaStyle`/`ctaReason`, `retentionGoal`, `estimatedWatchTime`, and
+`confidenceNotes` — see `brain/content-director-spec.md` Section 5. `topicId`/`topicTitle`/
+`targetDurationSeconds` are still carried straight from the lesson, and `contentDirectorVersion`/
+`generatedAt`/`basedOnLessonVersion` are still set deterministically, not by the model.
+
+**How it works**: `ContentDirectorPromptBuilder` builds a prompt grounded entirely in the
+lesson's own content (objective, analogy, `core_example`, `common_mistakes`, `key_points`,
+`visual_notes`) — the Content Director never invents new topic facts or chooses a different
+example than the lesson already committed to. Requested enum values use underscore form (e.g.
+`COMMON_BUG`, `TRY_THIS_YOURSELF`) matching the Java enum constant names in `ContentStrategy`,
+rather than the hyphenated form in `brain/content-director-schema.json` — the shared
+`ObjectMapper`'s case-insensitive enum matching does not also translate hyphens to underscores
+(see `config/JacksonConfig`'s Javadoc), so asking for underscores directly keeps parsing reliable
+without a custom deserializer.
+
+**Fallback**: identical pattern to research and lesson — missing `project-id`/
+`content-director-model` config, a failed API call, or a response that doesn't parse into
+`VertexAiContentStrategy` all fall back to `ContentDirectorServiceImpl`'s original deterministic
+rule-based strategy. Real, exercised path, not a stub.
+
+**What remains heuristic**: Script and Storyboard are still deterministic template/rule-based
+stages — unchanged by this or the research/lesson stages' Vertex AI integration.
+
+**Configuration**: `forgebrain.vertex-ai.content-director-temperature` (default `0.4`),
+`content-director-max-output-tokens` (default `2048`), and
+`content-director-response-mime-type` (default `application/json`) tune generation for this
+stage specifically. No new local setup beyond the research stage's ADC steps above.
 
 ## What's Deliberately Not Here
 

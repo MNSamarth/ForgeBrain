@@ -17,8 +17,8 @@ class VertexAiClientImplTest {
 
     @Test
     void throwsConfigurationExceptionWhenProjectIdIsBlank() {
-        VertexAiConfig config = new VertexAiConfig("", "us-central1", "gemini-2.0-flash-001", "", "",
-                0.4, 2048, "application/json");
+        VertexAiConfig config = new VertexAiConfig("", "us-central1", "gemini-2.0-flash-001", "", "", "",
+                0.4, 2048, "application/json", 0.4, 2048, "application/json");
         VertexAiClientImpl client = new VertexAiClientImpl(config);
 
         assertThatThrownBy(() -> client.generate(
@@ -29,8 +29,8 @@ class VertexAiClientImplTest {
 
     @Test
     void throwsConfigurationExceptionWhenModelIdIsBlank() {
-        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "",
-                0.4, 2048, "application/json");
+        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "", "",
+                0.4, 2048, "application/json", 0.4, 2048, "application/json");
         VertexAiClientImpl client = new VertexAiClientImpl(config);
 
         assertThatThrownBy(() -> client.generate(new VertexAiPromptRequest("", "prompt text", Map.of())))

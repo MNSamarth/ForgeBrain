@@ -56,8 +56,8 @@ class VertexAiResearchServiceImplTest {
 
     @Test
     void parsesAValidVertexAiResponseIntoAResearchResult() {
-        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "",
-                0.4, 2048, "application/json");
+        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "", "",
+                0.4, 2048, "application/json", 0.4, 2048, "application/json");
         String json = """
                 {
                   "topic_summary": "Variables store typed values in Java.",
@@ -94,8 +94,8 @@ class VertexAiResearchServiceImplTest {
         // VertexAiClientImpl itself throws ConfigurationException for a blank project id (see
         // VertexAiClientImplTest); this exercises the service's dedicated catch branch for that
         // exception type against a mocked client standing in for that real behavior.
-        VertexAiConfig config = new VertexAiConfig("", "us-central1", "gemini-2.0-flash-001", "", "",
-                0.4, 2048, "application/json");
+        VertexAiConfig config = new VertexAiConfig("", "us-central1", "gemini-2.0-flash-001", "", "", "",
+                0.4, 2048, "application/json", 0.4, 2048, "application/json");
         when(vertexAiClient.generate(any(VertexAiPromptRequest.class)))
                 .thenThrow(new ConfigurationException("forgebrain.vertex-ai.project-id is not configured"));
 
@@ -107,8 +107,8 @@ class VertexAiResearchServiceImplTest {
 
     @Test
     void fallsBackToHeuristicResearchWhenResearchModelIsBlank() {
-        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "", "", "",
-                0.4, 2048, "application/json");
+        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "", "", "", "",
+                0.4, 2048, "application/json", 0.4, 2048, "application/json");
 
         ResearchResult result = service(config).research(
                 "java-variables-and-data-types", variablesTopic, Topic.Difficulty.BEGINNER, 45, null);
@@ -119,8 +119,8 @@ class VertexAiResearchServiceImplTest {
 
     @Test
     void fallsBackToHeuristicResearchWhenTheClientThrows() {
-        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "",
-                0.4, 2048, "application/json");
+        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "", "",
+                0.4, 2048, "application/json", 0.4, 2048, "application/json");
         when(vertexAiClient.generate(any(VertexAiPromptRequest.class)))
                 .thenThrow(new RuntimeException("simulated network failure"));
 
@@ -132,8 +132,8 @@ class VertexAiResearchServiceImplTest {
 
     @Test
     void fallsBackToHeuristicResearchWhenTheResponseIsNotValidJson() {
-        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "",
-                0.4, 2048, "application/json");
+        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "", "",
+                0.4, 2048, "application/json", 0.4, 2048, "application/json");
         when(vertexAiClient.generate(any(VertexAiPromptRequest.class)))
                 .thenReturn(new VertexAiPromptResponse("not json at all", "gemini-2.0-flash-001", "STOP"));
 
@@ -145,8 +145,8 @@ class VertexAiResearchServiceImplTest {
 
     @Test
     void fallsBackToHeuristicResearchWhenTheResponseIsMissingRequiredFields() {
-        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "",
-                0.4, 2048, "application/json");
+        VertexAiConfig config = new VertexAiConfig("demo-project", "us-central1", "gemini-2.0-flash-001", "", "", "",
+                0.4, 2048, "application/json", 0.4, 2048, "application/json");
         String incompleteJson = """
                 {
                   "topic_summary": "Variables store typed values in Java.",

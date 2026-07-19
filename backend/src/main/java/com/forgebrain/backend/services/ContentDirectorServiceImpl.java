@@ -16,15 +16,18 @@ import com.forgebrain.backend.shared.ConfidenceNotes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Component;
 
 /**
  * Deterministic, rule-based implementation of {@link ContentDirectorService}. Every decision
  * is a fixed rule over the lesson's own content — see brain/content-director-spec.md Section
  * 5 for the heuristic tables these rules follow. Given the same lesson, this always produces
  * the same strategy.
+ *
+ * <p>Not a Spring bean: {@link VertexAiContentDirectorServiceImpl} is the {@link
+ * ContentDirectorService} bean and constructs this directly as its fallback, exactly as {@link
+ * ResearchServiceImpl} and {@link LessonServiceImpl} are used by their respective Vertex AI
+ * implementations.
  */
-@Component
 public class ContentDirectorServiceImpl implements ContentDirectorService {
 
     private static final String CONTENT_DIRECTOR_VERSION = "1.0.0-heuristic";

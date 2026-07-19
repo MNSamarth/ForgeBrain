@@ -1,39 +1,145 @@
 # ForgeBrain
 
-ForgeBrain is an AI content operating system for generating premium, faceless short-form educational videos.
+ForgeBrain is an AI-powered content pipeline for generating short-form educational videos, starting with Java learning content.
 
-## Phase 1 Focus
+## What ForgeBrain Is Building
 
-The initial focus is Java short-form educational content — bite-sized reels that teach Java concepts clearly and consistently.
+ForgeBrain turns a structured curriculum into publish-ready reels through a staged pipeline that combines deterministic logic, LLM generation, and production/review tooling.
 
-## Long-Term Goal
+## End-to-End Pipeline Flow
 
-ForgeBrain is designed to grow into a full content pipeline that can:
+```mermaid
+flowchart LR
+    A[Curriculum] --> B[Memory]
+    B --> C[Topic Selection]
+    C --> D[Research]
+    D --> E[Lesson]
+    E --> F[Content Director]
+    F --> G[Script]
+    G --> H[Storyboard]
+    H --> I[Renderer]
+    I --> J[Reviewer]
+    J --> K[Publishing]
+```
 
-- **Plan** a structured learning curriculum
-- **Generate** individual lesson scripts and content from that curriculum
-- **Render** the generated content into finished, faceless video reels
+Current executable slice: **Curriculum -> Storyboard** in the Spring Boot backend.
 
-## Project Status
+## Architecture (Current + Planned)
 
-The full Phase 1 **architecture** is designed: a fourteen-stage content pipeline (curriculum through publishing package), a JSON Schema contract for every stage, and a Spring Boot backend project structure (interfaces, domain models, configuration placeholders) mirroring those contracts. See [`docs/PIPELINE.md`](docs/PIPELINE.md) for the authoritative, current pipeline description and [`REPORT.md`](REPORT.md) for a full summary of what exists and what's next.
+```mermaid
+flowchart TB
+    subgraph Inputs
+        CURR[curriculum/java-roadmap.json]
+        MEM[memory/*.json state]
+    end
 
-**No pipeline business logic, AI provider calls, or rendering code are implemented yet** — every service in `backend/` is a contract (an interface) with no implementation. See [`TODO.md`](TODO.md) for the tracked path to a working Phase 1 reel.
+    subgraph Backend["Spring Boot Backend (backend/)"]
+        ORCH[PipelineOrchestratorImpl]
+        BRAIN[Topic Selector + Research + Lesson + Content Director + Script + Storyboard]
+        RESULT[PipelineResultStore JSON output]
+        VERTEX[VertexAiClientImpl]
+    end
+
+    subgraph GCP["Google Cloud (target platform)"]
+        VAI[Vertex AI]
+        GCS[Cloud Storage]
+        FS[Firestore]
+        CR[Cloud Run]
+    end
+
+    CURR --> ORCH
+    MEM --> ORCH
+    ORCH --> BRAIN --> RESULT
+    BRAIN --> VERTEX --> VAI
+    RESULT -. planned persistence .-> GCS
+    MEM -. planned migration .-> FS
+    ORCH -. planned deployment .-> CR
+```
+
+## Current Status
+
+This reflects the repository as of the latest backend vertical slice (`NEXT_EXECUTION.md`, `backend/README.md`).
+
+### Implemented
+
+- End-to-end orchestration from **Topic Selection -> Storyboard** (`PipelineOrchestratorImpl`, `runFullPipeline()`).
+- Working stage implementations for:
+  - Curriculum loading
+  - Memory storage (local JSON files)
+  - Topic selection
+  - Research
+  - Lesson
+  - Content Director
+  - Script
+  - Storyboard
+- Vertex AI integration in backend for:
+  - Research generation (`VertexAiResearchServiceImpl`)
+  - Lesson generation (`VertexAiLessonServiceImpl`)
+  - Shared client (`VertexAiClientImpl`) with ADC-based auth.
+- Pipeline result persistence to local JSON artifacts.
+- Automated tests for orchestrator and stage behavior.
+
+### Planned / Not Yet Implemented
+
+- Production stages after storyboard in the backend pipeline:
+  - Voice generation
+  - Subtitles
+  - Asset management
+  - Renderer
+  - Reviewer
+  - Publishing
+- Analytics feedback loop activation.
+- Firestore-backed persistence (currently local file memory state).
+- Cloud Storage-backed media/output storage.
+- Cloud Run deployment path (config scaffolding exists; deployment infra not yet implemented).
+
+## Technology Stack (Google Cloud Focused)
+
+- **Spring Boot 3 / Java 17**: Core orchestration and service runtime.
+- **Vertex AI (Gemini via Java SDK)**: Live LLM integration for research + lesson stages.
+- **Cloud Storage**: Planned artifact/media storage target.
+- **Firestore**: Planned persistent memory and pipeline state backend.
+- **Cloud Run**: Planned deployment target for the backend service.
 
 ## Repository Structure
 
 | Folder | Purpose |
 | --- | --- |
-| `brain/` | The decision/planning layer: topic selection, research, lesson, content strategy, script, storyboard. See `brain/README.md`. |
-| `renderer/` | The production layer: voice generation, subtitles, asset resolution, and rendering. See `renderer/README.md`. |
-| `reviewer/` | The pipeline's final quality gate: quality scoring and review verdicts. See `reviewer/README.md`. |
-| `publishing/` | Bundles an approved reel for a future publishing step. Does not publish anything. See `publishing/README.md`. |
-| `analytics/` | The performance feedback loop's design. Not active in Phase 1. See `analytics/README.md`. |
-| `backend/` | Spring Boot project structure: interfaces, domain models, configuration placeholders. No business logic yet. See `backend/README.md`. |
-| `curriculum/` | The Java learning roadmap that drives topic selection. See `curriculum/README.md`. |
-| `memory/` | Persistent state: what's been taught, queued, or flagged for revision. See `memory/README.md`. |
-| `prompts/` | AI prompt templates (not yet populated — see `TODO.md`). |
-| `assets/` | Static assets: fonts, brand elements, music, code themes (not yet populated — see `TODO.md`). |
-| `docs/` | Architecture, pipeline, and configuration documentation. |
-| `scripts/` | Developer and automation scripts (not yet populated). |
-| `.github/` | GitHub configuration (workflows, templates). |
+| `backend/` | Spring Boot implementation and pipeline orchestration. |
+| `brain/` | Specs/schemas/examples for topic selection, research, lesson, strategy, script, storyboard. |
+| `renderer/` | Specs/schemas for voice, subtitles, assets, rendering. |
+| `reviewer/` | Specs/schemas for quality scoring and review decisions. |
+| `publishing/` | Specs/schemas for packaging approved output for publishing workflows. |
+| `curriculum/` | Java roadmap dataset driving topic selection. |
+| `memory/` | Memory model/spec describing learning state and decisions. |
+| `analytics/` | Planned performance feedback loop specs. |
+| `docs/` | Architecture and configuration documentation. |
+| `TODO.md` | Backlog and implementation priorities. |
+| `NEXT_EXECUTION.md` | Latest executable-slice implementation summary. |
+
+## Project Roadmap
+
+### Phase 1 - Brain Pipeline Execution
+- Deliver reliable Curriculum -> Storyboard execution in backend.
+- Expand deterministic + Vertex-backed generation quality.
+- Keep schema-contract fidelity and strong test coverage.
+
+### Phase 2 - Production Pipeline
+- Implement Voice, Subtitles, Asset Management, and Renderer stages.
+- Produce repeatable video package outputs from storyboard artifacts.
+
+### Phase 3 - Quality and Publishing
+- Implement Reviewer scoring/gates and Publishing package flow.
+- Close the full path from curriculum topic to publish-ready output.
+
+### Phase 4 - Cloud and Optimization
+- Move persistence/artifacts to Firestore + Cloud Storage.
+- Deploy runtime to Cloud Run.
+- Activate analytics-driven iteration and performance feedback loops.
+
+## Getting Started
+
+1. Read [`docs/PIPELINE.md`](docs/PIPELINE.md) for stage contracts.
+2. Read [`backend/README.md`](backend/README.md) for executable backend details.
+3. See [`NEXT_EXECUTION.md`](NEXT_EXECUTION.md) for the current vertical slice and known gaps.
+4. See [`TODO.md`](TODO.md) for prioritized next implementation steps.

@@ -4,7 +4,7 @@ A Spring Boot project structure for the pipeline described in [`../docs/PIPELINE
 
 ## Stack
 
-Java 17, Spring Boot 3.3, Maven. `com.google.cloud:google-cloud-vertexai` is declared for the
+Java 25, Spring Boot 3.3, Maven. `com.google.cloud:google-cloud-vertexai` is declared for the
 research stage — see Section 5 and "Vertex AI Research Stage" below.
 
 ## Package Structure

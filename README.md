@@ -96,7 +96,7 @@ This reflects the repository as of the latest backend vertical slice (`NEXT_EXEC
 
 ## Technology Stack (Google Cloud Focused)
 
-- **Spring Boot 3 / Java 17**: Core orchestration and service runtime.
+- **Spring Boot 3 / Java 25**: Core orchestration and service runtime.
 - **Vertex AI (Gemini via Java SDK)**: Live LLM integration for research + lesson stages.
 - **Cloud Storage**: Planned artifact/media storage target.
 - **Firestore**: Planned persistent memory and pipeline state backend.

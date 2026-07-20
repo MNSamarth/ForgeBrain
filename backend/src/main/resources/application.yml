@@ -130,3 +130,10 @@ forgebrain:
     revision-priority-high-threshold: 0.6
     strong-performer-approval-rate-threshold: 0.8
     cooldown-days-on-rejection: 14
+  runtime:
+    run-on-startup: false
+    daily-reel-count: 1
+    parallelism: 1
+    max-retries-per-reel: 1
+    retry-backoff-millis: 2000
+    runtime-mode: "manual"

@@ -36,6 +36,7 @@ Two organizing principles are layered on top of each other, both requested expli
 | `curriculum` | `CurriculumLoader`, `RoadmapLevel` — reading `curriculum/java-roadmap.json`. |
 | `rendering` | The rendering foundation (`RenderPlan`, `SceneRenderPlan`, `RenderAssetManifest`, `SubtitleTimeline`, `RenderPlanBuilder`, `AssetCollector`, `RenderValidator`) plus its real FFmpeg execution path in `rendering.ffmpeg` (`FfmpegRenderEngine`, `RenderCommandBuilder`, `SrtWriter`, `PlaceholderAssetResolver`). See "Rendering Foundation" and "Storyboard to MP4" below. |
 | `job` | The durable job layer on top of `ReelExportService`: `ReelJob`, `ReelJobRepository`, `OutputPackagingService`, `OutputStorage`, `ReelJobReport`, `ReelJobService`. See "Reel Job System" below. |
+| `runtime` | The single coordinator on top of `ReelJobService`: `ForgeBrainRuntime`, `RuntimeState`, `RuntimeReport`, `RuntimeReportWriter`. See "ForgeBrain Runtime" below. |
 | `analytics` | Two generations of analytics types side by side: `PerformanceSnapshot`/`StrategyPerformanceAggregate` (real audience/platform metrics — see `analytics/analytics-spec.md`, still not active, no publishing integration posts anywhere real yet) and `ReelOutcomeSnapshot`/`TopicPerformanceAggregate`/`DimensionPerformanceAggregate`/`AnalyticsReport` plus `AnalyticsAggregator`/`AnalyticsMemoryFeedback` (real pipeline-outcome analytics, active today — see "Analytics / Feedback Loop" below). |
 | `publishing` | `PublishingMetadataGenerator`, `PlatformFormatter` (per-platform metadata formatting), and the `PlatformPublishAdapter` seam — dry-run (`AbstractDryRunPlatformPublishAdapter`, `YouTubeShortsPublishAdapter`, `InstagramReelsPublishAdapter`) and real (`YouTubeRealPublishAdapter`, `InstagramRealPublishAdapter`) implementations, chosen per platform by `PlatformPublishAdapterFactory`/`PlatformPublishAdapterBeanConfig`. See "Publishing" and "Real Platform Publishing" below. |
 
@@ -816,6 +817,99 @@ Every job, regardless of outcome, also closes back onto the next `TopicSelectorI
 integration to post somewhere and a real platform metrics API (YouTube Analytics, Instagram
 Insights) to pull view/watch-time/engagement numbers from — everything analytics does today works
 from pipeline-internal signals alone, which is a real but partial substitute for that.
+
+## ForgeBrain Runtime
+
+Every stage above — curriculum through memory update — already runs inside one
+`ReelJobService.submitJob()` call. The Runtime (`runtime/`) is the layer above that: the single
+coordinator that turns "call this service correctly" into "run ForgeBrain," executing a whole
+batch of reels autonomously and producing one report for the batch instead of one job at a time.
+It does not reimplement or change any stage — it is purely an orchestration layer around the
+existing `ReelJobService`, `ReelAnalyticsService`, and `MemoryService` beans.
+
+### Execution Flow
+
+```
+ForgeBrainRuntime.run()
+  → for each of RuntimeConfig.dailyReelCount() reel slots (up to `parallelism` concurrently):
+      → ReelJobService.submitJob()
+          Curriculum → Memory → Topic Selection → Research → Lesson → Content Director
+          → Script → Storyboard → Voice → Subtitles → Assets → Render → Review → Publishing
+          → Analytics capture → Memory update
+      → COMPLETED: record success
+      → FAILED: retry (up to RuntimeConfig.maxRetriesPerReel()), then record failure and
+        move on to the next slot — a failed reel never stops the batch
+  → ReelAnalyticsService.generateReport(batchStart, batchEnd) — one AnalyticsReport for exactly
+    this batch, reused as-is, not recomputed
+  → MemoryService.getTopicRecord(...) for every distinct topic touched — the resulting state
+  → RuntimeReportWriter writes one RuntimeReport
+```
+
+Every arrow above already existed before this mission except the first and last: `ForgeBrainRuntimeImpl`
+(`runtime/ForgeBrainRuntimeImpl.java`) calls `ReelJobService.submitJob()` in a loop and calls
+`ReelAnalyticsService`/`MemoryService` once more at the end — nothing in between is new or
+modified.
+
+### How to Run ForgeBrain
+
+`forgebrain run`'s Spring Boot equivalent — disabled by default, like every other runner in this
+project:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.arguments=--forgebrain.runtime.run-on-startup=true
+```
+
+`ForgeBrainRuntimeCommandLineRunner` never throws — `ForgeBrainRuntime.run()` tolerates every
+individual reel failure internally and always returns a `RuntimeReport`; the application keeps
+running afterward (no `System.exit`), matching `PipelineCommandLineRunner`/
+`ReelExportCommandLineRunner`/`ReelJobCommandLineRunner`'s exact pattern.
+
+Programmatically: inject `ForgeBrainRuntime` into any Spring-managed component and call `run()` —
+see `ForgeBrainRuntimeIntegrationTest` for a real `@SpringBootTest` proof, and
+`ForgeBrainRuntimeImplTest` for fast, mocked multi-reel/retry/failure-recovery coverage.
+
+### How to Configure the Runtime
+
+`RuntimeConfig` (`forgebrain.runtime.*`):
+
+```yaml
+forgebrain:
+  runtime:
+    run-on-startup: false     # forgebrain.runtime.run-on-startup — read directly, not a RuntimeConfig field
+    daily-reel-count: 1       # how many reels one run() call attempts
+    parallelism: 1            # concurrent reel slots — see the caveat below before raising this
+    max-retries-per-reel: 1   # additional submitJob() attempts before a slot is recorded failed
+    retry-backoff-millis: 2000
+    runtime-mode: "manual"    # informational label echoed into the report
+```
+
+**`parallelism` above 1 is experimental.** The file-based `MemoryService`/topic-selection path
+(`TopicSelectorImpl`, `MemoryServiceImpl`) was built for one writer at a time — its individual
+methods are synchronized, but "read memory, select a topic, mark it in-progress" is not atomic
+across two concurrent `submitJob()` calls, so two reel slots could race to select the same topic.
+The default (`1`) avoids this entirely; raising it is a deliberate, documented tradeoff, not a
+verified-safe feature.
+
+**Deliberately not duplicated here:** review threshold (`forgebrain.reviewer.approval-threshold`),
+publish mode/dry-run (`forgebrain.publishing.upload.*`), Vertex model selection
+(`forgebrain.vertex-ai.*`), and storage mode (`forgebrain.cloud-storage.enabled`) each already have
+a dedicated config class. `ForgeBrainRuntimeImpl` reads all four directly and echoes their live
+values into every `RuntimeReport.configSnapshot()` for visibility, rather than owning a second,
+driftable copy — see `RuntimeConfig`'s javadoc.
+
+### Runtime Reports
+
+`RuntimeReportWriter` writes one `<runtimeId>.json` under
+`<forgebrain.local-storage.execution-report-directory>/runtime/` per `run()` call — mirrors
+`ReelJobReportWriter`'s convention. Every `RuntimeReport` carries: a runtime id, start/end time and
+duration, reels requested/completed/failed, one `ReelExecutionSummary` per reel slot (job id,
+topic, status, review verdict, publishing status, attempts taken, failure reason), a
+publish-status tally across the batch, the batch's `AnalyticsReport`, the resulting
+`MemoryState.TopicRecord` summary for every topic touched, and every warning/error recorded along
+the way (a retried reel's earlier failures included, not just the final outcome). `RuntimeState`
+(`runtime/RuntimeState.java`) is the mutable accumulator behind all of this while a run is still
+in progress — the same "mutable in-progress / immutable finished snapshot" split as
+`PipelineContext`/`PipelineResult` for one pipeline run, just at the batch level.
 
 ## What's Deliberately Not Here
 

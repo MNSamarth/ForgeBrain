@@ -57,5 +57,9 @@ forgebrain:
     memory-state-path: "data/memory-state.json"
     pipeline-output-directory: "data/output"
     execution-report-directory: "reports"
+  rendering:
+    ffmpeg-path: "ffmpeg"
+    output-directory: "data/renders"
+    voiceover-assets-directory: "data/assets/voiceover"
   pipeline:
     run-on-startup: false

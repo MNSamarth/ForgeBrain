@@ -17,7 +17,7 @@ Two organizing principles are layered on top of each other, both requested expli
 | --- | --- |
 | `config` | Configuration placeholders (Vertex AI, Cloud Storage, Firestore, Cloud Scheduler, Cloud Run, general application). See `docs/CONFIGURATION.md`. |
 | `controllers` | HTTP endpoints. Only a health check exists — see Section 3. |
-| `services` | One interface per pipeline stage (14 total) plus `MemoryService` and `ReelAnalyticsService`. Topic Selection, Memory, Research, Lesson, Content Director, Script, Storyboard, Voice, Subtitles, Assets, Reviewer, Publishing, and analytics ingestion/feedback all have real implementations now — see the stage sections below. Only Renderer's job-lifecycle management (`RendererService`) and `AnalyticsService` (reserved for real audience/platform metrics — see "Analytics / Feedback Loop" below) remain interface-only. |
+| `services` | One interface per pipeline stage (14 total) plus `MemoryService` and `ReelAnalyticsService`. Topic Selection, Memory, Research, Lesson, Content Director, Script, Storyboard, Voice, Subtitles, Assets, Reviewer, Publishing, and analytics ingestion/feedback all have real implementations now — see the stage sections below. Research/Lesson/Content Director/Script no longer call `VertexAiClient` directly — they call `AiGateway` (see "AI Gateway" below). Only Renderer's job-lifecycle management (`RendererService`) and `AnalyticsService` (reserved for real audience/platform metrics — see "Analytics / Feedback Loop" below) remain interface-only. |
 | `models` | 22 immutable domain records, one per pipeline artifact, mirroring every `*-schema.json` in `brain/`, `renderer/`, `reviewer/`, `publishing/`. |
 | `entities` | The small subset of state that's actually persisted (memory, topic tracking, pipeline runs) — see Section 4 for why these are shaped differently from `models`. |
 | `dto` | API request/response wrappers, decoupled from the internal `models` shapes. |
@@ -30,7 +30,8 @@ Two organizing principles are layered on top of each other, both requested expli
 | Package | Holds |
 | --- | --- |
 | `pipeline` | `PipelineOrchestrator` (topic selection through storyboard) and `ReelExportService` (the full production continuation through a rendered MP4 — see "End-to-End Reel Export" below), plus their execution reports and `PipelineContext` (the run-scoped accumulator — see Section 4). |
-| `vertex` | The Vertex AI integration seam every generative service is expected to call through. |
+| `ai` | `AiGateway` — the centralized orchestration seam (routing, retry, timeout, validation, cache, metrics) every generative service calls through instead of `vertex.VertexAiClient` directly. See "AI Gateway" below. |
+| `vertex` | The Vertex AI integration seam `AiGateway` calls through — a real `VertexAiClientImpl`, unmodified by the AI Gateway mission. |
 | `memory` | `MemoryQueries` — the six standard lookups from `memory/README.md`'s decision table, promoted to named methods. |
 | `curriculum` | `CurriculumLoader`, `RoadmapLevel` — reading `curriculum/java-roadmap.json`. |
 | `rendering` | The rendering foundation (`RenderPlan`, `SceneRenderPlan`, `RenderAssetManifest`, `SubtitleTimeline`, `RenderPlanBuilder`, `AssetCollector`, `RenderValidator`) plus its real FFmpeg execution path in `rendering.ffmpeg` (`FfmpegRenderEngine`, `RenderCommandBuilder`, `SrtWriter`, `PlaceholderAssetResolver`). See "Rendering Foundation" and "Storyboard to MP4" below. |
@@ -73,6 +74,82 @@ for that addition without restructuring.
 
 This project could not be built with Maven in the environment this scaffold was produced in (Maven is not installed there). Instead: every file in `models`, `shared`, `exceptions`, `services`, `entities`, `repositories`, and the seven domain packages (75 files total) — the entire subset with zero external dependencies — was compiled directly with `javac` and produced zero errors. `pom.xml` was checked for well-formed XML and balanced tags; both `application.yml` files were checked for valid YAML structure (no tabs, consistent indentation). The Spring-dependent files (`config`, `controllers`, `dto`, `BackendApplication`, the test) follow the same conventions but were not independently compiled — **run `mvn compile` (or `mvn test`) as the first verification step** before building on this scaffold.
 
+## AI Gateway
+
+Every generative pipeline stage — Research, Lesson, Content Director, Script — calls `AiGateway`
+(`ai/AiGatewayImpl.java`, the `AiGateway` bean) instead of `vertex/VertexAiClient` directly.
+`VertexAiClient`/`VertexAiClientImpl` are completely unchanged; the gateway is a layer in front of
+them, not a replacement. `AiGatewayImplTest` covers routing, retry, cache, validation, fallback,
+and metrics against a mocked `VertexAiClient`; each stage's own `Vertex*ServiceImplTest` now wires
+a real `AiGatewayImpl` (retries/caching disabled for deterministic tests) around that same mock,
+so every prior fallback scenario (missing config, thrown exception, malformed JSON, incomplete
+JSON) is still exercised exactly as before.
+
+**Prompt Registry and model routing.** `PromptRegistryImpl` (`ai/PromptRegistryImpl.java`) builds
+one `PromptDefinition` per stage — name, version, purpose, model id, temperature, max output
+tokens, response MIME type — directly from `VertexAiConfig` at startup. A stage asks for its
+prompt by name (`aiGateway.execute(new AiPromptExecution<>("research", promptText, variables,
+VertexResearchContent.class, this::validate))`); the gateway resolves which model handles it from
+the registry. Switching a model is purely an `application.yml` edit:
+
+```
+Research         → forgebrain.vertex-ai.research-model         (gemini-2.0-flash-001)
+Lesson           → forgebrain.vertex-ai.lesson-model            (gemini-2.0-pro-001)
+Content Director → forgebrain.vertex-ai.content-director-model  (gemini-2.0-flash-001)
+Script           → forgebrain.vertex-ai.script-model            (gemini-2.0-pro-001)
+```
+
+Adding a future stage means adding one entry to `PromptRegistryImpl` and calling `AiGateway`, not
+writing a new "check config, build request, call the client, parse, validate, fall back" block
+from scratch.
+
+**Retry.** `RetryExecutor` (`ai/RetryExecutor.java`, a plain class the gateway owns directly —
+same "logic class owned by its orchestrator" convention as `QualityScorer`) retries a failed
+attempt with exponential backoff — `forgebrain.ai-gateway.max-retries` (default `2`) attempts
+after the first, delay starting at `initial-backoff-millis` (default `250`) and multiplying by
+`backoff-multiplier` (default `2.0`) each time. A `ConfigurationException` (blank project id, or
+any other "Vertex AI is not usable at all" signal from `VertexAiClientImpl`) or a blank model id
+is **never** retried — it fails immediately as `AiGatewayException.Reason.CONFIGURATION`. Every
+other failure (a thrown exception, a timeout, malformed JSON, or a failed validator) is retried,
+then surfaces as `Reason.EXECUTION_FAILED` once retries are exhausted.
+
+**Timeout.** Each Vertex AI call runs on a virtual thread with a bounded wait
+(`forgebrain.ai-gateway.timeout-millis`, default `30000`); exceeding it is treated as a retryable
+failure, same as any other transient error.
+
+**Response validation.** Two layers, both reused rather than duplicated: the response must parse
+into the stage's existing `Vertex*Content` record via the shared `ObjectMapper` (structural/schema
+validation — a response that doesn't fit the shape fails to parse), and then, if the stage
+supplies one, its own pre-existing `validate(...)` method runs as an `AiPromptExecution.validator`
+— passed in as a plain method reference (`this::validate`), not reimplemented. Either failure is
+retried exactly like a call failure.
+
+**Fallback.** A stage's catch block is unchanged in spirit: `catch (AiGatewayException e)` branches
+on `e.reason()` (`CONFIGURATION` logs at INFO, `EXECUTION_FAILED` logs at WARN with the full
+exception), calls `aiGateway.recordFallbackUsed(promptName)`, then calls its own heuristic
+`*ServiceImpl` — the exact same real, exercised fallback path every stage already had.
+
+**Caching.** `AiResponseCache` (`ai/AiResponseCache.java`) is a pluggable seam —
+`InMemoryAiResponseCache` is the only implementation today, a plain in-process map cleared on
+restart, adequate for this phase's single-instance deployment. A cache key is a SHA-256 hash of
+the prompt name, model id, and prompt text; an exact repeat reuses the previous raw response
+without calling Vertex AI again (`forgebrain.ai-gateway.cache-enabled`, default `true`). A future
+Redis- or Firestore-backed cache can implement the same interface and be swapped in as the sole
+`@Component`, exactly like `OutputStorage`'s local-vs-cloud seam.
+
+**Metrics.** `PromptMetricsRecorder` (`ai/PromptMetricsRecorder.java`, `InMemoryPromptMetricsRecorder`
+the default implementation) tracks, per prompt name: invocation count, failures, fallback count,
+cache hits, total retries consumed, average call duration, and an estimated total token count (a
+documented `(prompt + response length) / 4` character-based proxy, not a real tokenizer — no
+tokenizer is wired up in this phase). `AiGateway.metricsSnapshot()` returns the current snapshot
+for every prompt executed so far.
+
+**Future expansion.** Adding a real second AI provider (or a second model tier for an existing
+stage) means adding a `PromptDefinition` and, if the provider isn't Vertex AI, a new
+`VertexAiClient`-shaped implementation behind the same interface — no stage's own code changes.
+Storyboard, Reviewer, and Publishing remain deterministic/mechanical stages with no AI Gateway
+involvement, unchanged by this mission.
+
 ## Vertex AI Research Stage
 
 The research stage (`services/VertexAiResearchServiceImpl`, the `ResearchService` bean) calls
@@ -84,15 +161,16 @@ curriculum's own curated data, unchanged from the original heuristic approach.
 
 **How it works**: `ResearchPromptBuilder` builds a prompt grounded in the curriculum's
 `learning_objective`/`common_mistakes`/`example_ideas`, asking for a strict JSON response.
-`VertexAiClientImpl` (`vertex/`) opens a `VertexAI` client with `GenerationConfig`'s
-`responseMimeType` set to `application/json` and calls `GenerativeModel.generateContent`,
-authenticating via Application Default Credentials — no API keys in this repo.
-`VertexAiResearchServiceImpl` parses the JSON response into `VertexResearchContent` with the
-shared snake_case `ObjectMapper` and assembles the full `ResearchResult`.
+`VertexAiResearchServiceImpl` hands that prompt to `AiGateway` under the `"research"` prompt name
+(see "AI Gateway" above) — the gateway resolves the model, calls `VertexAiClientImpl` (which opens
+a `VertexAI` client with `GenerationConfig`'s `responseMimeType` set to `application/json` and
+calls `GenerativeModel.generateContent`, authenticating via Application Default Credentials — no
+API keys in this repo), and parses the response into `VertexResearchContent` with the shared
+snake_case `ObjectMapper` before this stage assembles the full `ResearchResult`.
 
-**Fallback**: any failure — missing `project-id`/`research-model` config, a failed API call, or
-a response that doesn't parse into `VertexResearchContent` — falls back to
-`ResearchServiceImpl`'s original heuristic brief. This is a real, tested code path, not just a
+**Fallback**: any `AiGatewayException` — missing `project-id`/`research-model` config, a failed
+API call after retries, or a response that doesn't parse into `VertexResearchContent` — falls back
+to `ResearchServiceImpl`'s original heuristic brief. This is a real, tested code path, not just a
 comment: it's what runs in any environment without GCP credentials configured, including this
 project's own test suite.
 
@@ -110,10 +188,12 @@ already defaults to `gemini-2.0-flash-001` in `application.yml`.
 
 ## Vertex AI Lesson Stage
 
-The lesson stage (`services/VertexAiLessonServiceImpl`, the `LessonService` bean) calls the same
-`VertexAiClient` (model configured separately via `forgebrain.vertex-ai.lesson-model`, also
-defaulting to `gemini-2.0-flash-001`) to narrow a research brief into the single-concept lesson
-blueprint required by `brain/lesson-spec.md` Section 4's "One of Everything" rule:
+The lesson stage (`services/VertexAiLessonServiceImpl`, the `LessonService` bean) calls `AiGateway`
+under the `"lesson"` prompt name (model configured separately via
+`forgebrain.vertex-ai.lesson-model`, defaulting to `gemini-2.0-pro-001` — a higher-tier model than
+research, since narrowing a brief into a committed lesson is a bigger judgment call) to narrow a
+research brief into the single-concept lesson blueprint required by `brain/lesson-spec.md` Section
+4's "One of Everything" rule:
 `lessonObjective`, `lessonSummary`, `keyPoints`, `stepByStepExplanation`, `coreExample`,
 `analogy`, `commonMistakes`, `whatToAvoidSaying`, `beginnerTakeaway`, `retentionHook`,
 `visualNotes`, and `confidenceNotes` all come from the model this time — unlike research, the
@@ -123,9 +203,10 @@ call the model is asked to make and justify via `confidenceNotes.flaggedUncertai
 the research brief, and `teachingStyle` is still decided deterministically (the caller's request,
 or the same heuristic `LessonServiceImpl` uses) before the prompt is built, not by the model.
 
-**Fallback**: identical pattern to research — missing `project-id`/`lesson-model` config, a
-failed API call, or a response that doesn't parse into `VertexAiLessonContent` all fall back to
-`LessonServiceImpl`'s original heuristic narrowing. Real, exercised path, not a stub.
+**Fallback**: identical pattern to research — any `AiGatewayException` (missing
+`project-id`/`lesson-model` config, a failed API call after retries, or a response that doesn't
+parse into `VertexAiLessonContent`) falls back to `LessonServiceImpl`'s original heuristic
+narrowing. Real, exercised path, not a stub.
 
 **What remains heuristic**: Storyboard is still a deterministic, mechanical stage — unchanged by
 any of this. Content Director and Script are both Vertex AI-backed too — see "Vertex AI Content
@@ -140,9 +221,9 @@ defaults when null. No new local setup beyond the research stage's ADC steps abo
 ## Vertex AI Content Director Stage
 
 The content director stage (`services/VertexAiContentDirectorServiceImpl`, the
-`ContentDirectorService` bean) calls the same `VertexAiClient` (model configured separately via
-`forgebrain.vertex-ai.content-director-model`, defaulting to `gemini-2.0-flash-001`) to make all
-seven directorial decisions over a committed `Lesson`: `hookType`/`hookReason`,
+`ContentDirectorService` bean) calls `AiGateway` under the `"content-director"` prompt name (model
+configured separately via `forgebrain.vertex-ai.content-director-model`, defaulting to
+`gemini-2.0-flash-001`) to make all seven directorial decisions over a committed `Lesson`: `hookType`/`hookReason`,
 `teachingStyle`/`teachingStyleReason`, `emotionalGoal`/`emotionalGoalReason`,
 `pacing`/`pacingReason`/`scenePacing`, `visualStyle`/`supportingVisuals`/`visualStyleReason`,
 `codeStyle`/`codeStyleReason`, `ctaStyle`/`ctaReason`, `retentionGoal`, `estimatedWatchTime`, and
@@ -160,10 +241,10 @@ rather than the hyphenated form in `brain/content-director-schema.json` — the 
 (see `config/JacksonConfig`'s Javadoc), so asking for underscores directly keeps parsing reliable
 without a custom deserializer.
 
-**Fallback**: identical pattern to research and lesson — missing `project-id`/
-`content-director-model` config, a failed API call, or a response that doesn't parse into
-`VertexAiContentStrategy` all fall back to `ContentDirectorServiceImpl`'s original deterministic
-rule-based strategy. Real, exercised path, not a stub.
+**Fallback**: identical pattern to research and lesson — any `AiGatewayException` (missing
+`project-id`/`content-director-model` config, a failed API call after retries, or a response that
+doesn't parse into `VertexAiContentStrategy`) falls back to `ContentDirectorServiceImpl`'s original
+deterministic rule-based strategy. Real, exercised path, not a stub.
 
 **What remains heuristic**: Storyboard is still a deterministic, mechanical stage — unchanged by
 this. Script is now Vertex AI-backed too — see "Vertex AI Script Stage" below.
@@ -175,10 +256,11 @@ stage specifically. No new local setup beyond the research stage's ADC steps abo
 
 ## Vertex AI Script Stage
 
-The script stage (`services/VertexAiScriptServiceImpl`, the `ScriptService` bean) calls the same
-`VertexAiClient` (model configured separately via `forgebrain.vertex-ai.script-model`, defaulting
-to `gemini-2.0-flash-001`) to turn a committed `Lesson` and its binding `ContentStrategy` into
-actual spoken narration and on-screen text: `hook`, `introLine`, `mainScript`,
+The script stage (`services/VertexAiScriptServiceImpl`, the `ScriptService` bean) calls `AiGateway`
+under the `"script"` prompt name (model configured separately via
+`forgebrain.vertex-ai.script-model`, defaulting to `gemini-2.0-pro-001`, the same higher tier as
+lesson generation) to turn a committed `Lesson` and its binding `ContentStrategy` into actual
+spoken narration and on-screen text: `hook`, `introLine`, `mainScript`,
 `codeNarration.spokenLines`/`focusLine`, `recapLine`, `ctaLine`, `sceneText`, `tone`, and
 `confidenceNotes` — see `brain/script-spec.md` Section 3 for the binding hook/teaching-style/
 pacing/code-style/CTA mapping the prompt enforces.
@@ -196,10 +278,10 @@ inconsistency `brain/script-spec.md` Section 9 explicitly rules out (`full_spoke
 reconstruct byte-for-byte from the structured fields; `subtitle_segments` must concatenate back
 to it losslessly).
 
-**Fallback**: identical pattern to research, lesson, and content director — missing
-`project-id`/`script-model` config, a failed API call, or a response that doesn't parse into
-`VertexAiScriptContent` all fall back to `ScriptServiceImpl`'s original deterministic templates.
-Real, exercised path, not a stub.
+**Fallback**: identical pattern to research, lesson, and content director — any
+`AiGatewayException` (missing `project-id`/`script-model` config, a failed API call after retries,
+or a response that doesn't parse into `VertexAiScriptContent`) falls back to `ScriptServiceImpl`'s
+original deterministic templates. Real, exercised path, not a stub.
 
 **What remains heuristic**: Storyboard is the only stage left that's still deterministic and
 mechanical — it groups the script's own already-validated segments into scenes rather than

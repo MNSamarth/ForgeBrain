@@ -1,18 +1,16 @@
 package com.forgebrain.backend.services;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.forgebrain.backend.config.VertexAiConfig;
+import com.forgebrain.backend.ai.AiGateway;
+import com.forgebrain.backend.ai.AiGatewayResult;
+import com.forgebrain.backend.ai.AiPromptExecution;
 import com.forgebrain.backend.curriculum.CurriculumLoader;
-import com.forgebrain.backend.exceptions.ConfigurationException;
+import com.forgebrain.backend.exceptions.AiGatewayException;
 import com.forgebrain.backend.exceptions.ContentGenerationException;
 import com.forgebrain.backend.models.MemoryState;
 import com.forgebrain.backend.models.ResearchResult;
 import com.forgebrain.backend.models.Topic;
 import com.forgebrain.backend.shared.ConfidenceLevel;
 import com.forgebrain.backend.shared.ConfidenceNotes;
-import com.forgebrain.backend.vertex.VertexAiClient;
-import com.forgebrain.backend.vertex.VertexAiPromptRequest;
-import com.forgebrain.backend.vertex.VertexAiPromptResponse;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,36 +20,30 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Vertex AI-backed {@link ResearchService}: calls {@link VertexAiClient} for the fields that
+ * AI Gateway-backed {@link ResearchService}: calls {@link AiGateway} for the fields that
  * genuinely benefit from generation ({@code topicSummary}, {@code coreConcepts}, {@code
  * simpleAnalogy}, {@code beginnerExplanation}, {@code advancedNotes}, {@code safetyNotes} — see
  * {@link ResearchPromptBuilder}), and assembles every other {@code ResearchResult} field
  * deterministically from curriculum data, exactly as {@link ResearchServiceImpl} does.
  *
- * <p>Falls back to {@link ResearchServiceImpl} whenever Vertex AI is unavailable — missing
- * {@code forgebrain.vertex-ai.project-id}/{@code research-model} configuration ({@link
- * ConfigurationException}), a failed API call, or a response that doesn't parse into {@link
- * VertexResearchContent}. The fallback is a real, exercised code path, not a stub: this is the
- * only path this sandbox can take without live GCP credentials.
+ * <p>Falls back to {@link ResearchServiceImpl} whenever the AI Gateway can't produce a usable
+ * result — see {@link AiGatewayException}. The fallback is a real, exercised code path, not a
+ * stub: this is the only path this sandbox can take without live GCP credentials.
  */
 @Component
 public class VertexAiResearchServiceImpl implements ResearchService {
 
     private static final Logger log = LoggerFactory.getLogger(VertexAiResearchServiceImpl.class);
     private static final String RESEARCH_VERSION = "1.0.0-vertex-ai";
+    private static final String PROMPT_NAME = "research";
 
-    private final VertexAiClient vertexAiClient;
-    private final VertexAiConfig vertexAiConfig;
+    private final AiGateway aiGateway;
     private final CurriculumLoader curriculumLoader;
-    private final ObjectMapper objectMapper;
     private final ResearchServiceImpl fallback;
 
-    public VertexAiResearchServiceImpl(VertexAiClient vertexAiClient, VertexAiConfig vertexAiConfig,
-            CurriculumLoader curriculumLoader, ObjectMapper objectMapper) {
-        this.vertexAiClient = vertexAiClient;
-        this.vertexAiConfig = vertexAiConfig;
+    public VertexAiResearchServiceImpl(AiGateway aiGateway, CurriculumLoader curriculumLoader) {
+        this.aiGateway = aiGateway;
         this.curriculumLoader = curriculumLoader;
-        this.objectMapper = objectMapper;
         this.fallback = new ResearchServiceImpl(curriculumLoader);
     }
 
@@ -59,35 +51,29 @@ public class VertexAiResearchServiceImpl implements ResearchService {
     public ResearchResult research(String selectedTopicId, Topic curriculumContext, Topic.Difficulty audienceLevel,
             int targetReelLengthSeconds, MemoryState.TopicRecord topicMemory) {
         try {
-            return researchViaVertexAi(selectedTopicId, curriculumContext, audienceLevel, targetReelLengthSeconds,
+            return researchViaAiGateway(selectedTopicId, curriculumContext, audienceLevel, targetReelLengthSeconds,
                     topicMemory);
-        } catch (ConfigurationException e) {
-            log.info("Vertex AI research unavailable ({}); falling back to heuristic research for topic '{}'.",
-                    e.getMessage(), selectedTopicId);
-        } catch (Exception e) {
-            log.warn("Vertex AI research call failed for topic '{}'; falling back to heuristic research.",
-                    selectedTopicId, e);
+        } catch (AiGatewayException e) {
+            if (e.reason() == AiGatewayException.Reason.CONFIGURATION) {
+                log.info("AI gateway unavailable for research ({}); falling back to heuristic research for topic"
+                        + " '{}'.", e.getMessage(), selectedTopicId);
+            } else {
+                log.warn("AI gateway research call failed for topic '{}'; falling back to heuristic research.",
+                        selectedTopicId, e);
+            }
+            aiGateway.recordFallbackUsed(PROMPT_NAME);
         }
         return fallback.research(selectedTopicId, curriculumContext, audienceLevel, targetReelLengthSeconds,
                 topicMemory);
     }
 
-    private ResearchResult researchViaVertexAi(String selectedTopicId, Topic curriculumContext,
-            Topic.Difficulty audienceLevel, int targetReelLengthSeconds, MemoryState.TopicRecord topicMemory)
-            throws Exception {
-        String modelId = vertexAiConfig.researchModel();
-        if (modelId == null || modelId.isBlank()) {
-            throw new ConfigurationException("forgebrain.vertex-ai.research-model is not configured");
-        }
-
+    private ResearchResult researchViaAiGateway(String selectedTopicId, Topic curriculumContext,
+            Topic.Difficulty audienceLevel, int targetReelLengthSeconds, MemoryState.TopicRecord topicMemory) {
         String promptText = ResearchPromptBuilder.build(curriculumContext, audienceLevel, targetReelLengthSeconds,
                 topicMemory);
-        VertexAiPromptRequest request = new VertexAiPromptRequest(modelId, promptText,
-                Map.of("topic_id", selectedTopicId));
-        VertexAiPromptResponse response = vertexAiClient.generate(request);
-
-        VertexResearchContent content = objectMapper.readValue(response.rawText(), VertexResearchContent.class);
-        validate(content);
+        AiGatewayResult<VertexResearchContent> result = aiGateway.execute(new AiPromptExecution<>(PROMPT_NAME,
+                promptText, Map.of("topic_id", selectedTopicId), VertexResearchContent.class, this::validate));
+        VertexResearchContent content = result.content();
 
         List<ResearchResult.TopicRef> prerequisites = curriculumContext.prerequisites().stream()
                 .map(id -> new ResearchResult.TopicRef(id, resolveTitle(id)))
@@ -110,7 +96,7 @@ public class VertexAiResearchServiceImpl implements ResearchService {
                 content.advancedNotes(),
                 curriculumContext.nextTopics(),
                 content.safetyNotes(),
-                buildConfidenceNotes(topicMemory),
+                buildConfidenceNotes(topicMemory, result.modelId()),
                 List.of(),
                 RESEARCH_VERSION,
                 Instant.now()
@@ -125,14 +111,14 @@ public class VertexAiResearchServiceImpl implements ResearchService {
                 || content.advancedNotes() == null
                 || content.safetyNotes() == null) {
             throw new ContentGenerationException("research",
-                    "Vertex AI response is missing required research fields: " + content);
+                    "AI gateway response is missing required research fields: " + content);
         }
     }
 
-    private ConfidenceNotes buildConfidenceNotes(MemoryState.TopicRecord topicMemory) {
+    private ConfidenceNotes buildConfidenceNotes(MemoryState.TopicRecord topicMemory, String modelId) {
         List<String> flagged = new ArrayList<>();
-        flagged.add("Generated by Vertex AI (" + vertexAiConfig.researchModel() + ") from curriculum-grounded"
-                + " prompts, without independent external source verification — see"
+        flagged.add("Generated by Vertex AI (" + modelId + ", via the AI Gateway's 'research' prompt) from"
+                + " curriculum-grounded prompts, without independent external source verification — see"
                 + " brain/research-spec.md Section 8.");
         if (topicMemory != null && topicMemory.status() == Topic.Status.NEEDS_REVISIT) {
             flagged.add("This is a revision. Prior attempt performance_score=" + topicMemory.performanceScore()

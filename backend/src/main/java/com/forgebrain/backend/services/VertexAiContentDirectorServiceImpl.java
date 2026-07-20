@@ -1,17 +1,15 @@
 package com.forgebrain.backend.services;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.forgebrain.backend.config.VertexAiConfig;
-import com.forgebrain.backend.exceptions.ConfigurationException;
+import com.forgebrain.backend.ai.AiGateway;
+import com.forgebrain.backend.ai.AiGatewayResult;
+import com.forgebrain.backend.ai.AiPromptExecution;
+import com.forgebrain.backend.exceptions.AiGatewayException;
 import com.forgebrain.backend.exceptions.ContentGenerationException;
 import com.forgebrain.backend.models.ContentStrategy;
 import com.forgebrain.backend.models.Lesson;
 import com.forgebrain.backend.models.MemoryState;
 import com.forgebrain.backend.models.Topic;
 import com.forgebrain.backend.shared.ConfidenceNotes;
-import com.forgebrain.backend.vertex.VertexAiClient;
-import com.forgebrain.backend.vertex.VertexAiPromptRequest;
-import com.forgebrain.backend.vertex.VertexAiPromptResponse;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,73 +19,58 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Vertex AI-backed {@link ContentDirectorService}: calls {@link VertexAiClient} to make all
- * seven directorial decisions over a committed {@link Lesson} — hook, teaching posture,
- * emotional goal, pacing/scene_pacing, visual strategy, code framing, CTA (see {@link
- * ContentDirectorPromptBuilder} and brain/content-director-spec.md Section 5) — and assembles
- * every other {@link ContentStrategy} field deterministically ({@code topicId}/{@code
- * topicTitle}/{@code targetDurationSeconds} carried from the lesson, version/traceability
- * fields set here), exactly as {@link ContentDirectorServiceImpl} does for its heuristic
- * fields.
+ * AI Gateway-backed {@link ContentDirectorService}: calls {@link AiGateway} to make all seven
+ * directorial decisions over a committed {@link Lesson} — hook, teaching posture, emotional goal,
+ * pacing/scene_pacing, visual strategy, code framing, CTA (see {@link ContentDirectorPromptBuilder}
+ * and brain/content-director-spec.md Section 5) — and assembles every other {@link
+ * ContentStrategy} field deterministically ({@code topicId}/{@code topicTitle}/{@code
+ * targetDurationSeconds} carried from the lesson, version/traceability fields set here), exactly
+ * as {@link ContentDirectorServiceImpl} does for its heuristic fields.
  *
- * <p>Falls back to {@link ContentDirectorServiceImpl} whenever Vertex AI is unavailable —
- * missing {@code forgebrain.vertex-ai.project-id}/{@code content-director-model} configuration
- * ({@link ConfigurationException}), a failed API call, or a response that doesn't parse into
- * {@link VertexAiContentStrategy}. The fallback is a real, exercised code path, not a stub:
- * this is the only path this sandbox can take without live GCP credentials.
+ * <p>Falls back to {@link ContentDirectorServiceImpl} whenever the AI Gateway can't produce a
+ * usable result — see {@link AiGatewayException}. The fallback is a real, exercised code path,
+ * not a stub: this is the only path this sandbox can take without live GCP credentials.
  */
 @Component
 public class VertexAiContentDirectorServiceImpl implements ContentDirectorService {
 
     private static final Logger log = LoggerFactory.getLogger(VertexAiContentDirectorServiceImpl.class);
     private static final String CONTENT_DIRECTOR_VERSION = "1.0.0-vertex-ai";
+    private static final String PROMPT_NAME = "content-director";
 
-    private final VertexAiClient vertexAiClient;
-    private final VertexAiConfig vertexAiConfig;
-    private final ObjectMapper objectMapper;
+    private final AiGateway aiGateway;
     private final ContentDirectorServiceImpl fallback;
 
-    public VertexAiContentDirectorServiceImpl(VertexAiClient vertexAiClient, VertexAiConfig vertexAiConfig,
-            ObjectMapper objectMapper) {
-        this.vertexAiClient = vertexAiClient;
-        this.vertexAiConfig = vertexAiConfig;
-        this.objectMapper = objectMapper;
+    public VertexAiContentDirectorServiceImpl(AiGateway aiGateway) {
+        this.aiGateway = aiGateway;
         this.fallback = new ContentDirectorServiceImpl();
     }
 
     @Override
     public ContentStrategy decideStrategy(Lesson lesson, MemoryState.TopicRecord topicMemory) {
         try {
-            return decideStrategyViaVertexAi(lesson, topicMemory);
-        } catch (ConfigurationException e) {
-            log.info("Vertex AI content director generation unavailable ({}); falling back to heuristic"
-                    + " strategy for topic '{}'.", e.getMessage(), lesson.topicId());
-        } catch (Exception e) {
-            log.warn("Vertex AI content director call failed for topic '{}'; falling back to heuristic"
-                    + " strategy.", lesson.topicId(), e);
+            return decideStrategyViaAiGateway(lesson, topicMemory);
+        } catch (AiGatewayException e) {
+            if (e.reason() == AiGatewayException.Reason.CONFIGURATION) {
+                log.info("AI gateway unavailable for content director generation ({}); falling back to heuristic"
+                        + " strategy for topic '{}'.", e.getMessage(), lesson.topicId());
+            } else {
+                log.warn("AI gateway content director call failed for topic '{}'; falling back to heuristic"
+                        + " strategy.", lesson.topicId(), e);
+            }
+            aiGateway.recordFallbackUsed(PROMPT_NAME);
         }
         return fallback.decideStrategy(lesson, topicMemory);
     }
 
-    private ContentStrategy decideStrategyViaVertexAi(Lesson lesson, MemoryState.TopicRecord topicMemory)
-            throws Exception {
-        String modelId = vertexAiConfig.contentDirectorModel();
-        if (modelId == null || modelId.isBlank()) {
-            throw new ConfigurationException("forgebrain.vertex-ai.content-director-model is not configured");
-        }
-
+    private ContentStrategy decideStrategyViaAiGateway(Lesson lesson, MemoryState.TopicRecord topicMemory) {
         String promptText = ContentDirectorPromptBuilder.build(lesson, topicMemory);
-        VertexAiPromptRequest request = new VertexAiPromptRequest(modelId, promptText,
-                Map.of("topic_id", lesson.topicId()),
-                vertexAiConfig.contentDirectorTemperature(), vertexAiConfig.contentDirectorMaxOutputTokens(),
-                vertexAiConfig.contentDirectorResponseMimeType());
-        VertexAiPromptResponse response = vertexAiClient.generate(request);
-
-        VertexAiContentStrategy content = objectMapper.readValue(response.rawText(), VertexAiContentStrategy.class);
-        validate(content);
+        AiGatewayResult<VertexAiContentStrategy> result = aiGateway.execute(new AiPromptExecution<>(PROMPT_NAME,
+                promptText, Map.of("topic_id", lesson.topicId()), VertexAiContentStrategy.class, this::validate));
+        VertexAiContentStrategy content = result.content();
 
         boolean isRevision = topicMemory != null && topicMemory.status() == Topic.Status.NEEDS_REVISIT;
-        ConfidenceNotes confidenceNotes = buildConfidenceNotes(content, lesson, isRevision);
+        ConfidenceNotes confidenceNotes = buildConfidenceNotes(content, lesson, isRevision, result.modelId());
 
         return new ContentStrategy(
                 lesson.topicId(),
@@ -134,18 +117,18 @@ public class VertexAiContentDirectorServiceImpl implements ContentDirectorServic
                 || content.confidenceNotes() == null
                 || content.confidenceNotes().overallConfidence() == null) {
             throw new ContentGenerationException("content-director",
-                    "Vertex AI response is missing required content strategy fields: " + content);
+                    "AI gateway response is missing required content strategy fields: " + content);
         }
     }
 
-    private ConfidenceNotes buildConfidenceNotes(VertexAiContentStrategy content, Lesson lesson,
-            boolean isRevision) {
+    private ConfidenceNotes buildConfidenceNotes(VertexAiContentStrategy content, Lesson lesson, boolean isRevision,
+            String modelId) {
         List<String> flagged = new ArrayList<>(content.confidenceNotes().flaggedUncertainties() != null
                 ? content.confidenceNotes().flaggedUncertainties()
                 : List.of());
-        flagged.add("Generated by Vertex AI (" + vertexAiConfig.contentDirectorModel() + ") from lesson"
-                + " lesson_version=" + lesson.lessonVersion() + " — strategy_performance-informed weighting"
-                + " is not yet available (see brain/content-director-spec.md Section 8).");
+        flagged.add("Generated by Vertex AI (" + modelId + ", via the AI Gateway's 'content-director' prompt) from"
+                + " lesson lesson_version=" + lesson.lessonVersion() + " — strategy_performance-informed"
+                + " weighting is not yet available (see brain/content-director-spec.md Section 8).");
         if (isRevision) {
             flagged.add("This is a revision. Strategy was asked to visibly differ from the prior"
                     + " underperforming attempt rather than repeat it.");

@@ -11,6 +11,12 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.forgebrain.backend.ai.AiGateway;
+import com.forgebrain.backend.ai.AiGatewayImpl;
+import com.forgebrain.backend.ai.InMemoryAiResponseCache;
+import com.forgebrain.backend.ai.InMemoryPromptMetricsRecorder;
+import com.forgebrain.backend.ai.PromptRegistryImpl;
+import com.forgebrain.backend.config.AiGatewayConfig;
 import com.forgebrain.backend.config.LocalStorageConfig;
 import com.forgebrain.backend.config.VertexAiConfig;
 import com.forgebrain.backend.curriculum.CurriculumLoaderImpl;
@@ -24,10 +30,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies {@link VertexAiResearchServiceImpl} against a mocked {@link VertexAiClient} — no
- * real network call is made. Covers: successful Vertex AI generation is parsed and assembled
- * correctly, and every way the client can be "unavailable" (missing config, thrown exception,
- * malformed JSON, incomplete JSON) correctly falls back to the heuristic result.
+ * Verifies {@link VertexAiResearchServiceImpl} against a mocked {@link VertexAiClient}, wired
+ * through a real {@link AiGatewayImpl} (retries/caching disabled so each scenario below is a
+ * single deterministic attempt) — no real network call is made. Covers: successful generation is
+ * parsed and assembled correctly, and every way the gateway can be "unavailable" (missing config,
+ * thrown exception, malformed JSON, incomplete JSON) correctly falls back to the heuristic result.
  */
 class VertexAiResearchServiceImplTest {
 
@@ -51,7 +58,10 @@ class VertexAiResearchServiceImplTest {
     }
 
     private VertexAiResearchServiceImpl service(VertexAiConfig config) {
-        return new VertexAiResearchServiceImpl(vertexAiClient, config, curriculumLoader, objectMapper);
+        AiGateway aiGateway = new AiGatewayImpl(vertexAiClient, new PromptRegistryImpl(config),
+                new AiGatewayConfig(0, 0, 1.0, 5000, false), new InMemoryAiResponseCache(),
+                new InMemoryPromptMetricsRecorder(), objectMapper);
+        return new VertexAiResearchServiceImpl(aiGateway, curriculumLoader);
     }
 
     @Test

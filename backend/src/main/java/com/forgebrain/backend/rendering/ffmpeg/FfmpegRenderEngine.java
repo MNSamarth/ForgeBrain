@@ -10,7 +10,6 @@ import com.forgebrain.backend.rendering.RenderValidationResult.ValidationIssue;
 import com.forgebrain.backend.rendering.RenderValidationResult.ValidationIssue.Severity;
 import com.forgebrain.backend.rendering.RenderValidator;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,7 +20,6 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -46,17 +44,18 @@ public class FfmpegRenderEngine implements RenderEngine {
     private static final String OUTPUT_FILE_NAME = "reel.mp4";
     private static final String SUBTITLE_FILE_NAME = "subtitles.srt";
     private static final String THUMBNAIL_FILE_NAME = "thumbnail.jpg";
-    private static final long PROCESS_TIMEOUT_SECONDS = 120;
 
     private final RenderValidator renderValidator;
     private final PlaceholderAssetResolver assetResolver;
     private final RenderingConfig renderingConfig;
+    private final FfmpegProcessRunner processRunner;
 
     public FfmpegRenderEngine(RenderValidator renderValidator, PlaceholderAssetResolver assetResolver,
-            RenderingConfig renderingConfig) {
+            RenderingConfig renderingConfig, FfmpegProcessRunner processRunner) {
         this.renderValidator = renderValidator;
         this.assetResolver = assetResolver;
         this.renderingConfig = renderingConfig;
+        this.processRunner = processRunner;
     }
 
     @Override
@@ -87,7 +86,7 @@ public class FfmpegRenderEngine implements RenderEngine {
 
         List<String> renderCommand = RenderCommandBuilder.build(renderPlan, renderingConfig.ffmpegPath(),
                 OUTPUT_FILE_NAME, SUBTITLE_FILE_NAME, voiceoverPath.orElse(null));
-        runFfmpeg(renderCommand, renderDirectory);
+        processRunner.run(renderCommand, renderDirectory);
 
         Path videoFile = renderDirectory.resolve(OUTPUT_FILE_NAME);
         verifyOutputFile(videoFile);
@@ -117,46 +116,10 @@ public class FfmpegRenderEngine implements RenderEngine {
                 "-frames:v", "1",
                 thumbnailFile.getFileName().toString());
         try {
-            runFfmpeg(thumbnailCommand, renderDirectory);
+            processRunner.run(thumbnailCommand, renderDirectory);
         } catch (RenderExecutionException e) {
             log.warn("Thumbnail extraction failed for topic '{}'; the video itself rendered successfully, "
                     + "continuing without a thumbnail.", renderPlan.topicId(), e);
-        }
-    }
-
-    private void runFfmpeg(List<String> command, Path workingDirectory) {
-        Process process;
-        try {
-            process = new ProcessBuilder(command)
-                    .directory(workingDirectory.toFile())
-                    .redirectErrorStream(true)
-                    .start();
-        } catch (IOException e) {
-            throw new RenderExecutionException("Could not start ffmpeg ('" + renderingConfig.ffmpegPath()
-                    + "'). Is it installed and on PATH? See backend/README.md's FFmpeg requirement note.", e);
-        }
-
-        String output;
-        try (InputStream processOutput = process.getInputStream()) {
-            output = new String(processOutput.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new RenderExecutionException("Failed to read ffmpeg output.", e);
-        }
-
-        boolean finished;
-        try {
-            finished = process.waitFor(PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RenderExecutionException("ffmpeg execution was interrupted.", e);
-        }
-        if (!finished) {
-            process.destroyForcibly();
-            throw new RenderExecutionException("ffmpeg did not finish within " + PROCESS_TIMEOUT_SECONDS + "s.");
-        }
-        if (process.exitValue() != 0) {
-            throw new RenderExecutionException("ffmpeg exited with code " + process.exitValue() + ":\n"
-                    + tail(output, 4000));
         }
     }
 
@@ -217,9 +180,5 @@ public class FfmpegRenderEngine implements RenderEngine {
                 .map(ValidationIssue::message)
                 .reduce((a, b) -> a + "; " + b)
                 .orElse("unknown validation failure");
-    }
-
-    private static String tail(String text, int maxLength) {
-        return text.length() <= maxLength ? text : text.substring(text.length() - maxLength);
     }
 }

@@ -128,7 +128,7 @@ Full detail and rationale in `TODO.md`'s closing section; summary:
 
 ## 6. Assumptions Made
 
-- **Java 17, Spring Boot 3.3, Maven.** Not specified in the task; chosen as current, well-supported defaults. Noted explicitly in `backend/README.md`.
+- **Java 17, Spring Boot 3.3, Maven.** Not specified in the task; chosen as current, well-supported defaults. Noted explicitly in `backend/README.md`. (Later updated to Java 21 LTS — see `backend/README.md` and `backend/pom.xml` for the current standard; this section is a historical record of the original decision, not current guidance.)
 - **Base package `com.forgebrain.backend`.** No naming convention existed previously; chosen to match the project name.
 - **Reviewer's post-render position (Section 3, decision 1) overrides the original architecture doc** rather than treating the two as parallel/contradictory review steps. Stated as a reconciliation, not silently changed.
 - **Example depth was deliberately reduced for the 8 newly-created architecture components** relative to `brain/`'s existing standard (2-3 worked examples instead of 6-8, and hand-authored rather than programmatically generated for most of them) to keep this single pass's scope achievable. Flagged explicitly in each affected file and in `TODO.md` 6.2, not silently under-delivered.

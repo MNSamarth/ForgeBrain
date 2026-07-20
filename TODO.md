@@ -53,28 +53,28 @@ Every stage below has a complete spec, JSON Schema, worked examples, and a Java 
 - **Priority:** Medium.
 
 ### 1.8 Voice Generation
-- **Current status:** `VoiceService` interface exists. Spec complete, 1 worked example (as part of the renderer/ combined example).
-- **Future implementation:** Implement against Google Cloud Text-to-Speech. Must produce real `actual_duration_seconds` and, where available, `word_timings` per scene — this is the stage where estimate finally meets reality (`voice-spec.md` Section 4).
-- **Dependencies:** A Google Cloud Text-to-Speech client dependency (not yet in `pom.xml`), Storyboard (1.7).
+- **Current status:** Implemented (`services/VoiceServiceImpl.java`). Two real paths: measures a real narration file's duration via `ffprobe` and distributes it proportionally across scenes when one exists at `forgebrain.rendering.voiceover-assets-directory/<topicId>.{mp3,wav}`; otherwise synthesizes and writes a real silent WAV at the storyboard's estimated duration (documented fallback, not a stub). `word_timings` is empty in both paths — sanctioned by `voice-spec.md` Section 8.
+- **Future implementation:** Wire a real Google Cloud Text-to-Speech call as a third path (preferred over both current ones when available) to produce real per-word `word_timings` — the seam (`VoiceService`'s contract) doesn't need to change.
+- **Dependencies:** A Google Cloud Text-to-Speech client dependency (not yet in `pom.xml`), Storyboard (1.7) — done.
 - **Priority:** Medium.
 
 ### 1.9 Subtitle Generation
-- **Current status:** `SubtitleService` interface exists. Spec complete.
-- **Future implementation:** Implement both reconciliation methods (`subtitle-spec.md` Section 4) — word-alignment when `word_timings` exists, proportional-estimate fallback otherwise. Both paths need real implementations, not just the fallback.
-- **Dependencies:** Voice Generation (1.8).
+- **Current status:** Implemented (`services/SubtitleServiceImpl.java`). Both reconciliation methods from `subtitle-spec.md` Section 4 are real: word-alignment (consumes real per-word timestamps when `VoiceResult.wordTimings` is populated) and proportional-estimate (scales original segment timing by the real/estimated duration ratio otherwise — what runs today, given 1.8's current fallback never populates `wordTimings`).
+- **Future implementation:** Once 1.8 gains a real TTS path with real `word_timings`, the word-alignment method here already handles it — no change needed on this side.
+- **Dependencies:** Voice Generation (1.8) — done.
 - **Priority:** Medium.
 
 ### 1.10 Asset Management
-- **Current status:** `AssetService` interface exists. Spec complete.
-- **Future implementation:** Implement the catalog lookup once `assets/` (5.2) actually contains a catalog to resolve against. Until then this stage has nothing real to resolve to.
-- **Dependencies:** A populated `assets/` catalog (5.2), Storyboard (1.7).
-- **Priority:** Medium, blocked on 5.2.
+- **Current status:** Implemented (`services/AssetServiceImpl.java`). Resolves fonts/background theme/watermark/music/code-card references against a local catalog directory (`forgebrain.rendering.assets-directory`), falling back to deterministic `render_style`-keyed placeholder names for anything not found there.
+- **Future implementation:** Populate the actual catalog (5.2) and, for a real deployment, back `assetsDirectory` with Cloud Storage instead of a local directory — no code change needed in `AssetServiceImpl` beyond how that path resolves.
+- **Dependencies:** A populated `assets/` catalog (5.2, still empty) improves output quality but no longer blocks this stage from running.
+- **Priority:** Medium.
 
 ### 1.11 Renderer
-- **Current status:** `RendererService` and `RenderEngine` interfaces exist. Spec complete. **No rendering/encoding code exists or is expected from this pass** — this project's rules explicitly excluded writing rendering code.
-- **Future implementation:** This is the largest single implementation gap in the pipeline: an actual video composition/encoding technology has to be selected and integrated behind `RenderEngine`. Out of scope for a documentation-only follow-up; likely its own dedicated implementation phase.
-- **Dependencies:** Voice (1.8), Subtitles (1.9), Assets (1.10).
-- **Priority:** Medium — high value, but realistically the biggest individual effort in the whole backlog.
+- **Current status:** Implemented for the synchronous render itself: `rendering/ffmpeg/FfmpegRenderEngine.java` (the `RenderEngine` bean) converts a validated `RenderPlan` into a real, playable MP4 via a local `ffmpeg` binary — background, timed text overlays, subtitle burn-in, audio mixing, a fade transition. `RendererService`'s asynchronous job-lifecycle contract (`submitRenderJob`/`getRenderJobStatus`/`RenderJob` tracking) is still unimplemented; rendering today runs synchronously inside `ReelExportServiceImpl`.
+- **Future implementation:** Wire `RendererService` around `RenderEngine` for real async job tracking/polling if/when that's needed; add per-scene transition styles beyond hard cuts; add real code-screenshot/card image generation instead of text overlay.
+- **Dependencies:** Voice (1.8), Subtitles (1.9), Assets (1.10) — all done.
+- **Priority:** Medium — the core rendering gap is closed; what's left is job orchestration and asset-quality polish.
 
 ### 1.12 Reviewer & Quality Scoring
 - **Current status:** `ReviewerService` interface exists (covers both). Specs complete, with a worked `approved` and `rejected` example each.
@@ -231,6 +231,6 @@ These are gaps acknowledged *inside* the specs themselves, pulled forward here s
 4. **Section 1.1–1.2** (Topic Selection, Memory — the first real, testable slice of the pipeline).
 5. **Section 1.3–1.7** (Research through Storyboard — the full decision layer, independently testable against `brain/`'s existing worked examples before any media is produced).
 6. **Section 5.2, 6.1** (asset catalog and brand voice — product decisions that unblock the production layer).
-7. **Section 1.8–1.11** (Voice through Renderer — the production layer; 1.11 is the largest individual effort in this entire list).
+7. **Section 1.8–1.11** (Voice through Renderer — the production layer). **Done**: all four have real implementations composed end to end by `ReelExportService` into a playable MP4; what remains is provider/catalog quality (real TTS, a real asset catalog), not the core gap.
 8. **Section 1.12–1.13** (Reviewer, Publishing Package — closing out one full reel).
 9. Everything else (Sections 1.14, 1.15, 3.3–3.7, 6.2–6.3) only after step 8 produces one real, correct, manually-verified reel — consistent with `docs/ARCHITECTURE.md`'s founding Phase 1 success criterion.

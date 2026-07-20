@@ -59,9 +59,10 @@ class FfmpegRenderEngineTest {
     }
 
     private FfmpegRenderEngine engine(String ffmpegPath) {
-        RenderingConfig config = new RenderingConfig(ffmpegPath, tempDir.resolve("renders").toString(),
-                tempDir.resolve("voiceover").toString());
-        return new FfmpegRenderEngine(new RenderValidator(), new PlaceholderAssetResolver(config), config);
+        RenderingConfig config = new RenderingConfig(ffmpegPath, "ffprobe", tempDir.resolve("renders").toString(),
+                tempDir.resolve("voiceover").toString(), tempDir.resolve("assets").toString());
+        return new FfmpegRenderEngine(new RenderValidator(), new PlaceholderAssetResolver(config), config,
+                new FfmpegProcessRunner(config));
     }
 
     private static boolean isFfmpegAvailable() {
@@ -101,7 +102,7 @@ class FfmpegRenderEngineTest {
 
         assertThatThrownBy(() -> engine("this-binary-does-not-exist-forgebrain-test").render(plan))
                 .isInstanceOf(RenderExecutionException.class)
-                .hasMessageContaining("Could not start ffmpeg");
+                .hasMessageContaining("Could not start 'this-binary-does-not-exist-forgebrain-test'");
     }
 
     // --- Integration-style test for the render pipeline boundary -------------------------------

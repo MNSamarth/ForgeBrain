@@ -19,7 +19,7 @@ class PlaceholderAssetResolverTest {
     @Test
     void resolvesToEmptyWhenNoRealVoiceoverFileExists() {
         PlaceholderAssetResolver resolver = new PlaceholderAssetResolver(
-                new RenderingConfig("ffmpeg", "data/renders", tempDir.toString()));
+                new RenderingConfig("ffmpeg", "ffprobe", "data/renders", tempDir.toString(), "assets"));
 
         assertThat(resolver.resolveVoiceoverPath("java-for-loop")).isEmpty();
     }
@@ -28,7 +28,7 @@ class PlaceholderAssetResolverTest {
     void resolvesToTheRealFileWhenAnMp3ExistsForTheTopic() throws IOException {
         Files.writeString(tempDir.resolve("java-for-loop.mp3"), "not real audio, just proving file resolution");
         PlaceholderAssetResolver resolver = new PlaceholderAssetResolver(
-                new RenderingConfig("ffmpeg", "data/renders", tempDir.toString()));
+                new RenderingConfig("ffmpeg", "ffprobe", "data/renders", tempDir.toString(), "assets"));
 
         Optional<Path> resolved = resolver.resolveVoiceoverPath("java-for-loop");
 
@@ -39,7 +39,7 @@ class PlaceholderAssetResolverTest {
     void resolvesToAWavFileWhenNoMp3ExistsForTheTopic() throws IOException {
         Files.writeString(tempDir.resolve("java-for-loop.wav"), "not real audio either");
         PlaceholderAssetResolver resolver = new PlaceholderAssetResolver(
-                new RenderingConfig("ffmpeg", "data/renders", tempDir.toString()));
+                new RenderingConfig("ffmpeg", "ffprobe", "data/renders", tempDir.toString(), "assets"));
 
         assertThat(resolver.resolveVoiceoverPath("java-for-loop")).contains(tempDir.resolve("java-for-loop.wav"));
     }

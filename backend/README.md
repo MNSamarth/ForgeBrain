@@ -4,8 +4,8 @@ A Spring Boot project structure for the pipeline described in [`../docs/PIPELINE
 
 ## Stack
 
-Java 25, Spring Boot 3.3, Maven. `com.google.cloud:google-cloud-vertexai` is declared for the
-research stage — see Section 5 and "Vertex AI Research Stage" below.
+**Java 21 LTS**, **Spring Boot 3.x**, **Maven**. `com.google.cloud:google-cloud-vertexai` is
+declared for the research stage — see Section 5 and "Vertex AI Research Stage" below.
 
 ## Package Structure
 
@@ -17,7 +17,7 @@ Two organizing principles are layered on top of each other, both requested expli
 | --- | --- |
 | `config` | Configuration placeholders (Vertex AI, Cloud Storage, Firestore, Cloud Scheduler, Cloud Run, general application). See `docs/CONFIGURATION.md`. |
 | `controllers` | HTTP endpoints. Only a health check exists — see Section 3. |
-| `services` | One interface per pipeline stage (14 total) plus `MemoryService`. Contracts only, no implementations. |
+| `services` | One interface per pipeline stage (14 total) plus `MemoryService`. Topic Selection, Memory, Research, Lesson, Content Director, Script, Storyboard, Voice, Subtitles, and Assets all have real implementations now — see the stage sections below. Only Renderer's job-lifecycle management (`RendererService`), Reviewer, and Publishing remain interface-only. |
 | `models` | 19 immutable domain records, one per pipeline artifact, mirroring every `*-schema.json` in `brain/`, `renderer/`, `reviewer/`, `publishing/`. |
 | `entities` | The small subset of state that's actually persisted (memory, topic tracking, pipeline runs) — see Section 4 for why these are shaped differently from `models`. |
 | `dto` | API request/response wrappers, decoupled from the internal `models` shapes. |
@@ -29,11 +29,12 @@ Two organizing principles are layered on top of each other, both requested expli
 
 | Package | Holds |
 | --- | --- |
-| `pipeline` | `PipelineOrchestrator`, `PipelineContext` (the run-scoped accumulator — see Section 4), `PipelineRunStatus`. |
+| `pipeline` | `PipelineOrchestrator` (topic selection through storyboard) and `ReelExportService` (the full production continuation through a rendered MP4 — see "End-to-End Reel Export" below), plus their execution reports and `PipelineContext` (the run-scoped accumulator — see Section 4). |
 | `vertex` | The Vertex AI integration seam every generative service is expected to call through. |
 | `memory` | `MemoryQueries` — the six standard lookups from `memory/README.md`'s decision table, promoted to named methods. |
 | `curriculum` | `CurriculumLoader`, `RoadmapLevel` — reading `curriculum/java-roadmap.json`. |
 | `rendering` | The rendering foundation (`RenderPlan`, `SceneRenderPlan`, `RenderAssetManifest`, `SubtitleTimeline`, `RenderPlanBuilder`, `AssetCollector`, `RenderValidator`) plus its real FFmpeg execution path in `rendering.ffmpeg` (`FfmpegRenderEngine`, `RenderCommandBuilder`, `SrtWriter`, `PlaceholderAssetResolver`). See "Rendering Foundation" and "Storyboard to MP4" below. |
+| `job` | The durable job layer on top of `ReelExportService`: `ReelJob`, `ReelJobRepository`, `OutputPackagingService`, `OutputStorage`, `ReelJobReport`, `ReelJobService`. See "Reel Job System" below. |
 | `analytics` | `PerformanceSnapshot`, `StrategyPerformanceAggregate` — see `analytics/analytics-spec.md`. Not active in Phase 1. |
 | `publishing` | `PlatformFormatter` — per-platform metadata formatting. |
 
@@ -59,13 +60,14 @@ A controller calling a `services` interface with no implementation behind it wou
 
 Every `services` interface takes explicit, named parameters (e.g. `ResearchService.research(String selectedTopicId, Topic curriculumContext, ...)`) rather than one shared context object — reading a method signature should tell you exactly what that stage needs, matching its `*-spec.md`'s Inputs table. `PipelineContext` (in `pipeline`) exists at a different altitude: it's the orchestrator's own bookkeeping object, accumulating every stage's output as one topic moves through all fourteen stages, and the shape `PipelineRunEntity` would persist. Services don't take it; the orchestrator that calls services does.
 
-### 5. Google Cloud SDK: Vertex AI only, so far
+### 5. Google Cloud SDK: Vertex AI and Cloud Storage, so far
 
 `pom.xml` declares `com.google.cloud:google-cloud-vertexai`, used by `vertex/VertexAiClientImpl`
-for the research and lesson stages (see "Vertex AI Research Stage" and "Vertex AI Lesson Stage"
-below). No other Google Cloud client library (`spring-cloud-gcp`, Firestore, Cloud Storage) is
-declared yet — `repositories` and `entities` are still shaped for that addition without
-restructuring, but nothing beyond research and lesson calls a real GCP API in this phase.
+for the research/lesson/content-director/script stages, and `com.google.cloud:google-cloud-storage`,
+used by `job/CloudStorageOutputStorage` (see "Cloud Storage Seam" below) — both authenticate via
+Application Default Credentials, no embedded keys. No other Google Cloud client library
+(`spring-cloud-gcp`, Firestore) is declared yet — `repositories` and `entities` are still shaped
+for that addition without restructuring.
 
 ### 6. Verification status
 
@@ -284,26 +286,234 @@ via `forgebrain.rendering.ffmpeg-path` if it isn't). Verified against FFmpeg 8.x
 Without it, `FfmpegRenderEngine` throws a `RenderExecutionException` naming the configured path,
 rather than failing silently.
 
-**Audio**: `RenderPlan.audio().voiceoverTrackRef()` is currently always a placeholder (Voice
-Generation isn't implemented — see `TODO.md` 1.8), so `PlaceholderAssetResolver` looks for a real
-file at `forgebrain.rendering.voiceover-assets-directory/<topicId>.{mp3,wav}` and — this is the
-documented fallback, not a stub — renders with a silent audio track (`ffmpeg`'s `anullsrc`) for
-the plan's full duration when none exists. Drop a real file at that path and the next render
-picks it up automatically, no code change.
+**Audio**: when a `RenderPlan` was built via the enriched, reconciled `RenderPlanBuilder.build(Storyboard,
+VoiceResult, SubtitleResult, AssetManifest)` overload (see "End-to-End Reel Export" below),
+`RenderPlan.audio().voiceoverTrackRef()` is already a real file `VoiceServiceImpl` wrote —
+`PlaceholderAssetResolver`'s own lookup only matters for the simpler, standalone `RenderPlanBuilder.build(Storyboard)`
+path. Either way, the underlying convention is the same: a real file at
+`forgebrain.rendering.voiceover-assets-directory/<topicId>.{mp3,wav}`, with a silent audio track
+(`ffmpeg`'s `anullsrc`) as the documented fallback when none exists — see "Voice Generation" below.
 
-**Placeholder-safe assets**: background is a solid color keyed off `RenderStyle` (no real
-background video/image assets exist yet — Asset Management isn't implemented, see `TODO.md`
-5.2/1.10); code panels show the focus line as text rather than a real code screenshot image;
-fonts render via FFmpeg's default `fontconfig` resolution rather than a specific font file (the
-`FontSet` names in a `RenderPlan` aren't resolved to real font files yet). All genuinely
-real-and-working today, just not yet using production-quality assets.
+**Placeholder-safe assets**: when a `RenderPlan` comes from the enriched builder, fonts/music/watermark
+come from `AssetServiceImpl`'s resolved `AssetManifest` (see "Asset Management" below), which
+checks `forgebrain.rendering.assets-directory` for real catalog files before falling back to the
+same deterministic, `RenderStyle`-keyed names as before. Code panels still show the focus line as
+text rather than a real code screenshot image — that generation step doesn't exist yet.
 
-**What's still needed**: real Voice Generation output, real Asset Management output (font files,
-background media, code screenshot generation), per-scene transition styles beyond hard cuts
+**What's still needed**: a real Text-to-Speech provider behind `VoiceServiceImpl` (Google Cloud
+Text-to-Speech, per `renderer/voice-spec.md` Section 6 — the seam is ready, nothing calls it yet);
+a real, populated asset catalog (font files, background media, licensed music) behind
+`AssetServiceImpl`, ideally backed by Cloud Storage in a real deployment rather than a local
+directory; code screenshot/card image generation; per-scene transition styles beyond hard cuts
 (`QUICK_FADE`/`SLIDE`/`ZOOM_PUNCH`/`MATCH_CUT` are defined on `Scene.TransitionStyle` but not yet
-implemented as distinct FFmpeg filters), and wiring `RendererService`/`RenderJob` around this
-engine for asynchronous job tracking (still just an interface — this task only implements the
-synchronous `RenderEngine` seam itself).
+implemented as distinct FFmpeg filters); and wiring `RendererService`/`RenderJob` around this
+engine for asynchronous job tracking (still just an interface — this path runs synchronously).
+
+## Voice Generation
+
+`VoiceServiceImpl` (`services/VoiceServiceImpl.java`, the `VoiceService` bean) is the seam a real
+Google Cloud Text-to-Speech integration plugs into (`renderer/voice-spec.md` Section 6) without
+changing its contract. Two real, exercised paths:
+
+- **A real narration file exists** at `forgebrain.rendering.voiceover-assets-directory/<topicId>.{mp3,wav}`
+  — its real duration is measured via `ffprobe` and distributed across scenes proportionally to
+  each scene's estimated share of the storyboard's total (the same idea `renderer/subtitle-spec.md`
+  Section 4 uses for its own fallback, applied here since no per-scene files or word-level timing
+  exist yet).
+- **No real file exists** (the normal case today) — a real silent WAV is synthesized via `ffmpeg`
+  at exactly the storyboard's total estimated duration and written to that same path, so every
+  scene's `actualDurationSeconds` equals its estimate (zero drift, honestly reported) and the
+  renderer has a genuine file to mix in. This is the documented fallback Part 3 of this mission
+  asked for, not a stub — and it's what the render path actually uses today.
+
+Both paths report `wordTimings` as empty, which `renderer/voice-spec.md` Section 8 explicitly
+sanctions.
+
+## Subtitle Generation
+
+`SubtitleServiceImpl` (`services/SubtitleServiceImpl.java`, the `SubtitleService` bean) reconciles
+the storyboard's word-count-estimated subtitle timing against `VoiceResult`'s real timing, per
+`renderer/subtitle-spec.md` Section 4's two methods — **word-alignment** (consumes real per-word
+timestamps when `wordTimings` is populated) and **proportional-estimate** (scales each segment's
+original timing by `actualDurationSeconds / estimatedDurationSeconds` when it isn't, which is what
+runs today given `VoiceServiceImpl`'s current fallback). Both methods build the reconciled reel
+timeline from a running cursor over each scene's *real* duration, not the storyboard's estimate —
+scene order/content is never changed, only timing. Output stays mobile-readable via a fixed
+`SafeRegion` (10% top / 18% bottom) matching `storyboard-spec.md` Section 9's guidance on platform
+UI overlap; burn-in styling itself happens at render time (see "Storyboard to MP4" above).
+
+## Asset Management
+
+`AssetServiceImpl` (`services/AssetServiceImpl.java`, the `AssetService` bean) resolves a
+storyboard's abstract `render_style` into concrete references, per
+`renderer/asset-management-spec.md`. It checks `forgebrain.rendering.assets-directory` (the local
+stand-in for the repository's `assets/` catalog, still empty per `TODO.md` 5.2 — a real deployment
+would back this with Cloud Storage instead) for real files at documented per-category paths
+(`fonts/<style>-heading.ttf`, `music/<style>.mp3`, `watermark/default.png`, ...) before falling
+back to the same deterministic, `RenderStyle`-keyed placeholder names used elsewhere. Every
+category the mission asked for is covered: fonts, background/color theme, watermark, music, and
+per-scene code-card references for scenes with a code block.
+
+## End-to-End Reel Export
+
+`ReelExportServiceImpl` (`pipeline/ReelExportServiceImpl.java`, the `ReelExportService` bean) is
+the full production path this mission's Part 6 asks for:
+
+```
+Topic Selection → Research → Lesson → Content Director → Script → Storyboard   (PipelineOrchestrator, unchanged)
+    → Voice → Subtitles → Assets → RenderPlan → RenderValidation → Render → MP4
+```
+
+Call it from a test (see `ReelExportServiceImplTest`, a real `@SpringBootTest` running this whole
+path against the real curriculum and a real `ffmpeg` binary), from any Spring-managed component
+via `ReelExportService`, or as a "one command" local run:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.arguments=--forgebrain.reel-export.run-on-startup=true
+```
+
+Every run writes one output folder (under `forgebrain.rendering.output-directory`) containing
+`reel.mp4`, `thumbnail.jpg`, `subtitles.srt`, `metadata.json` (the run's `VideoPackage`, serialized),
+and `report.json` (see "Observability" below) — everything needed to inspect or hand off one reel
+without reading logs. A failure at any stage still writes a `report.json` (to a `failed-<topicId>-<timestamp>`
+folder if it happened before a video existed), so a broken run is always diagnosable, matching
+`PipelineOrchestratorImpl`'s own established try/catch/finally-report pattern.
+
+### Observability
+
+`ReelExportReport` (`pipeline/ReelExportReport.java`) covers everything this mission's Part 7
+asked for, for the stages after `PipelineExecutionReport` already covers: a `runId` independent of
+the underlying AI pipeline's own `pipelineId`, start/end timestamps and per-stage `Duration`,
+success/failure per stage (`AI_PIPELINE`, `VOICE`, `SUBTITLES`, `ASSETS`, `RENDER_PLAN`,
+`RENDER_VALIDATION`, `RENDER_EXECUTION`), fallback usage (flagged as a warning whenever
+`VoiceServiceImpl` or `AssetServiceImpl` used their placeholder path), a human-readable render
+validation summary, every output path written, and accumulated warnings/errors. Persisted by
+`ReelExportReportWriterImpl` as `report.json` alongside the reel it describes.
+
+## Reel Job System
+
+`ReelExportServiceImpl` above is the one-shot function-call path — call it, get a reel or an
+exception. `com.forgebrain.backend.job` (`ReelJobServiceImpl`, the `ReelJobService` bean) is the
+job-aware sibling on top of it: the same production stages, composed independently around an
+explicit, durable, persisted job record, so ForgeBrain behaves like a content service with
+inspectable jobs rather than only a script you run and watch the console for. **The sync path is
+completely unmodified** — `ReelExportServiceImpl`/`ReelExportServiceImplTest` have a zero-line
+diff from before this layer was added; the job layer reuses the same lower-level stage services
+(`VoiceService`, `SubtitleService`, `AssetService`, `RenderPlanBuilder`, `RenderValidator`,
+`RenderEngine`, `PipelineOrchestrator`) independently rather than wrapping or modifying it.
+
+### Job Lifecycle
+
+`ReelJob` (`job/ReelJob.java`) is an immutable record; every transition below returns a new
+snapshot (never mutates in place) and is directly unit-tested in isolation (`ReelJobTest`):
+
+```
+QUEUED → RUNNING → VALIDATING → RENDERING → PACKAGING → COMPLETED
+                                                        ↘ FAILED (from any stage)
+```
+
+`QUEUED` (job created) → `RUNNING` (AI pipeline through render-plan construction) → `VALIDATING`
+(`RenderValidator`) → `RENDERING` (`RenderEngine`) → `PACKAGING` (`OutputPackagingService`) →
+`COMPLETED`. Each `ReelJob` carries: `jobId` and a separate `pipelineRunId` (a distinct
+correlation id per execution attempt — see the class javadoc for why "rerun" means "submit a new
+job" today, not retry-in-place), topic id/title, `createdAt`/`startedAt`/`completedAt`/`duration`,
+`outputDirectory`, `outputFiles` (category → stored reference), `failureReason`, `warnings`,
+`fallbackStages` (which stages used a documented fallback), and `renderChecksum` (from the
+rendered `VideoPackage`, once rendering completes).
+
+**`ReelJobService.submitJob()` never throws** for a pipeline/render/packaging failure — unlike
+`ReelExportService.exportReel()`, it always returns a `ReelJob`, with `Status.FAILED` and
+`failureReason` set when something went wrong. That's the intended job-system contract: inspect
+the returned record's status instead of wrapping the call in try/catch.
+
+### Output Packaging
+
+`OutputPackagingServiceImpl` (`job/OutputPackagingServiceImpl.java`) turns one render's raw
+working-directory files into a structured package: writes `metadata.json` (the run's
+`VideoPackage`, serialized — same format the sync path already uses), then passes every file
+(`reel.mp4`, `thumbnail.jpg`, `subtitles.srt`, `metadata.json`, and later `report.json`) through
+the `OutputStorage` seam. Category keys are consistent across both this layer and the sync path's
+report (`"video"`, `"thumbnail"`, `"subtitles"`, `"metadata"`, `"report"`), so nothing downstream
+needs to know which stage produced which file.
+
+### Cloud Storage Seam
+
+`OutputStorage` (`job/OutputStorage.java`) is the abstraction every output file passes through:
+`store(jobId, localFile) → stable reference`. Exactly one implementation is active at a time,
+chosen by `OutputStorageFactory` (`job/OutputStorageFactory.java`) and wired as the single
+`OutputStorage` bean by `OutputStorageBeanConfig` — `OutputPackagingServiceImpl` and everything
+above it depend only on the interface, so they never know or care which backend is active.
+
+**Local storage (the default).** `LocalOutputStorage` copies each file into
+`<forgebrain.jobs.output-storage-root>/<jobId>/<fileName>`. Every committed profile uses this —
+`forgebrain.cloud-storage.enabled` defaults to `false` — and nothing below changes that behavior.
+
+**Cloud Storage.** `CloudStorageOutputStorage` uploads each file to `gs://<media-bucket>/<output-
+prefix>/<jobId>/<fileName>` using the official `com.google.cloud:google-cloud-storage` client,
+authenticated via Application Default Credentials (the same pattern as the Vertex AI client — no
+embedded keys), and returns that `gs://` URI as the stored reference. The GCS client is only ever
+constructed once cloud storage is confirmed enabled and validated, so a disabled (default) setup
+never attempts credential discovery — no GCP project or credentials are needed to build or test
+this project.
+
+**Enabling it later.** Set, in `application.yml` or via a property/environment override:
+
+```yaml
+forgebrain:
+  cloud-storage:
+    enabled: true
+    media-bucket: "your-bucket-name"
+    output-prefix: "reels"
+    project-id: ""   # optional; blank uses the ADC-associated project
+```
+
+If `enabled: true` but `media-bucket` is blank, `OutputStorageFactory` fails fast at startup with
+a clear `ConfigurationException` instead of silently falling back — misconfiguration should be
+loud when cloud storage was explicitly opted into. With `enabled: false` (or omitted), cloud
+storage is never touched and local storage behaves exactly as it always has.
+
+**What's stored, either way:** `reel.mp4`, `thumbnail.jpg`, `subtitles.srt`, `metadata.json`, and
+`report.json` — the same five artifacts, same category keys (`"video"`, `"thumbnail"`,
+`"subtitles"`, `"metadata"`, `"report"`), through both `OutputPackagingService` and the job report
+writer, regardless of which backend is active. Publishing (actually distributing a finished reel)
+remains out of scope — this is storage, not distribution.
+
+### Job Storage
+
+`ReelJobRepository` (`job/ReelJobRepository.java`) persists `ReelJob` snapshots — `create`,
+`update`, `findById`, `findAll`. `LocalFileReelJobRepository` is the only implementation: one
+`<jobId>.json` file per job under `forgebrain.jobs.jobs-directory`, overwritten on every `update`
+— the same one-JSON-file-per-record convention already established by `ReportWriterImpl` and
+`ReelExportReportWriterImpl`, not a new database dependency this project doesn't otherwise have.
+
+### Diagnostics and Reporting
+
+`ReelJobReport` (`job/ReelJobReport.java`) extends the report pattern `ReelExportReport` already
+established (reusing `StageExecutionSummary` directly) with this layer's own fields: `jobId`
+distinct from `pipelineRunId`, explicit `fallbackStages`, and a `packagingSummary`. Written by
+`ReelJobReportWriterImpl` as `report.json` alongside the reel, then stored through `OutputStorage`
+like every other output file — readable by a human opening the JSON file, or by code via the
+shared `ObjectMapper` (see `ReelJobServiceImplTest` for both). Written on success **and on
+failure** (to a `failed-job-<jobId>` folder if the job never reached a render directory), so a
+broken job is always diagnosable from one file, per this mission's "never silently swallow a
+failure" requirement.
+
+### Entry Points
+
+Call `ReelJobService.submitJob()` from any Spring-managed component, from a test (see
+`ReelJobServiceImplTest`, a real `@SpringBootTest` proving one job to completion and a second
+rerun failing cleanly with its own report), or as a "one command" local run:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.arguments=--forgebrain.jobs.run-on-startup=true
+```
+
+### Where This Fits
+
+`ReelJob.Status.COMPLETED` plus a populated `outputFiles` map is exactly the shape a future
+Publishing stage would need to pick up — a job id, a topic, and stored references to every
+artifact, already real `gs://` URIs when Cloud Storage is enabled (see "Cloud Storage Seam"
+above). Publishing itself is out of scope for this mission (see `TODO.md` 1.13/1.14).
 
 ## What's Deliberately Not Here
 

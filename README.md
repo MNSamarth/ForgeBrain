@@ -22,7 +22,10 @@ flowchart LR
     J --> K[Publishing]
 ```
 
-Current executable slice: **Curriculum -> Storyboard** in the Spring Boot backend.
+Current executable slice: **Curriculum -> MP4**, end to end, in the Spring Boot backend —
+`ReelExportService` runs Topic Selection through Storyboard (`PipelineOrchestrator`), then Voice,
+Subtitles, Assets, and a real local FFmpeg render, producing a playable reel. See
+[`backend/README.md`](backend/README.md)'s "End-to-End Reel Export" section.
 
 ## Architecture (Current + Planned)
 
@@ -36,8 +39,15 @@ flowchart TB
     subgraph Backend["Spring Boot Backend (backend/)"]
         ORCH[PipelineOrchestratorImpl]
         BRAIN[Topic Selector + Research + Lesson + Content Director + Script + Storyboard]
+        EXPORT[ReelExportServiceImpl]
+        PROD[Voice + Subtitles + Assets + RenderPlan]
         RESULT[PipelineResultStore JSON output]
         VERTEX[VertexAiClientImpl]
+        FFMPEG[FfmpegRenderEngine]
+    end
+
+    subgraph Local["Local (backend/data/)"]
+        MP4[reel.mp4 + metadata.json + subtitles.srt + report.json]
     end
 
     subgraph GCP["Google Cloud (target platform)"]
@@ -51,6 +61,8 @@ flowchart TB
     MEM --> ORCH
     ORCH --> BRAIN --> RESULT
     BRAIN --> VERTEX --> VAI
+    RESULT --> EXPORT
+    EXPORT --> PROD --> FFMPEG --> MP4
     RESULT -. planned persistence .-> GCS
     MEM -. planned migration .-> FS
     ORCH -. planned deployment .-> CR
@@ -63,6 +75,8 @@ This reflects the repository as of the latest backend vertical slice (`NEXT_EXEC
 ### Implemented
 
 - End-to-end orchestration from **Topic Selection -> Storyboard** (`PipelineOrchestratorImpl`, `runFullPipeline()`).
+- End-to-end reel export from **Topic Selection -> MP4** (`ReelExportServiceImpl`, `exportReel()`),
+  continuing the above through Voice, Subtitles, Assets, and a real local FFmpeg render.
 - Working stage implementations for:
   - Curriculum loading
   - Memory storage (local JSON files)
@@ -72,23 +86,28 @@ This reflects the repository as of the latest backend vertical slice (`NEXT_EXEC
   - Content Director
   - Script
   - Storyboard
+  - Voice Generation (real-file measurement or a real, documented silent-track fallback — see backend/README.md)
+  - Subtitle Generation (word-alignment and proportional-estimate reconciliation)
+  - Asset Management (local catalog resolution with deterministic placeholder fallback)
+  - Renderer (`FfmpegRenderEngine` — real, local, deterministic MP4 export)
 - Vertex AI integration in backend for:
-  - Research generation (`VertexAiResearchServiceImpl`)
-  - Lesson generation (`VertexAiLessonServiceImpl`)
+  - Research, Lesson, Content Director, and Script generation
   - Shared client (`VertexAiClientImpl`) with ADC-based auth.
 - Pipeline result persistence to local JSON artifacts.
-- Pipeline execution report generation per run under `reports/` (stage-by-stage observability).
-- Automated tests for orchestrator and stage behavior.
+- Pipeline execution report generation per run under `reports/`, plus a dedicated reel export
+  diagnostics report (`report.json`) written alongside every rendered reel (stage-by-stage
+  observability for both paths).
+- Automated tests for orchestrator, stage behavior, and a real `ffmpeg`-backed end-to-end render.
 
 ### Planned / Not Yet Implemented
 
-- Production stages after storyboard in the backend pipeline:
-  - Voice generation
-  - Subtitles
-  - Asset management
-  - Renderer
-  - Reviewer
-  - Publishing
+- A real Text-to-Speech provider behind Voice Generation (Google Cloud Text-to-Speech; the seam
+  is ready, see `renderer/voice-spec.md` Section 6).
+- A real, populated asset catalog behind Asset Management (font files, background media, licensed
+  music — currently an empty local directory, ideally Cloud Storage-backed in a real deployment).
+- Reviewer and Publishing stages.
+- `RendererService`/`RenderJob` asynchronous job-lifecycle tracking around the render engine
+  (rendering itself runs synchronously today).
 - Analytics feedback loop activation.
 - Firestore-backed persistence (currently local file memory state).
 - Cloud Storage-backed media/output storage.
@@ -96,8 +115,11 @@ This reflects the repository as of the latest backend vertical slice (`NEXT_EXEC
 
 ## Technology Stack (Google Cloud Focused)
 
-- **Spring Boot 3 / Java 25**: Core orchestration and service runtime.
-- **Vertex AI (Gemini via Java SDK)**: Live LLM integration for research + lesson stages.
+- **Spring Boot 3.x / Java 21 LTS / Maven**: Core orchestration and service runtime.
+- **Vertex AI (Gemini via Java SDK)**: Live LLM integration for research, lesson, content
+  director, and script stages.
+- **FFmpeg (local)**: Real video rendering backend — see backend/README.md's "Storyboard to
+  MP4" section.
 - **Cloud Storage**: Planned artifact/media storage target.
 - **Firestore**: Planned persistent memory and pipeline state backend.
 - **Cloud Run**: Planned deployment target for the backend service.
@@ -126,8 +148,10 @@ This reflects the repository as of the latest backend vertical slice (`NEXT_EXEC
 - Keep schema-contract fidelity and strong test coverage.
 
 ### Phase 2 - Production Pipeline
-- Implement Voice, Subtitles, Asset Management, and Renderer stages.
-- Produce repeatable video package outputs from storyboard artifacts.
+- Implement Voice, Subtitles, Asset Management, and Renderer stages. **Done** — all four have
+  real implementations, composed end to end by `ReelExportService` into a playable MP4.
+- Produce repeatable video package outputs from storyboard artifacts. **Done** for the local path;
+  swapping in a real TTS provider and a real asset catalog remains (see "Planned" above).
 
 ### Phase 3 - Quality and Publishing
 - Implement Reviewer scoring/gates and Publishing package flow.

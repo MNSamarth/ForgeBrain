@@ -37,9 +37,12 @@ forgebrain:
     script-max-output-tokens: 2048
     script-response-mime-type: "application/json"
   cloud-storage:
+    enabled: false
     media-bucket: ""
     assets-bucket: ""
     temp-bucket: ""
+    output-prefix: "reels"
+    project-id: ""
   firestore:
     project-id: ""
     database-id: "(default)"
@@ -59,7 +62,15 @@ forgebrain:
     execution-report-directory: "reports"
   rendering:
     ffmpeg-path: "ffmpeg"
+    ffprobe-path: "ffprobe"
     output-directory: "data/renders"
     voiceover-assets-directory: "data/assets/voiceover"
+    assets-directory: "../assets"
   pipeline:
+    run-on-startup: false
+  reel-export:
+    run-on-startup: false
+  jobs:
+    jobs-directory: "data/jobs"
+    output-storage-root: "data/job-output"
     run-on-startup: false

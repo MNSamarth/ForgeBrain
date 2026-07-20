@@ -7,20 +7,28 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.forgebrain.backend.config.LocalStorageConfig;
 import com.forgebrain.backend.curriculum.CurriculumLoaderImpl;
+import com.forgebrain.backend.config.RenderingConfig;
+import com.forgebrain.backend.models.AssetManifest;
 import com.forgebrain.backend.models.ContentStrategy;
 import com.forgebrain.backend.models.Lesson;
 import com.forgebrain.backend.models.Scene;
 import com.forgebrain.backend.models.Script;
 import com.forgebrain.backend.models.Storyboard;
+import com.forgebrain.backend.models.SubtitleResult;
 import com.forgebrain.backend.models.Topic;
+import com.forgebrain.backend.models.VoiceResult;
+import com.forgebrain.backend.models.VoiceResult.SceneAudio;
+import com.forgebrain.backend.services.AssetServiceImpl;
 import com.forgebrain.backend.services.ContentDirectorServiceImpl;
 import com.forgebrain.backend.services.LessonServiceImpl;
 import com.forgebrain.backend.services.ResearchServiceImpl;
 import com.forgebrain.backend.services.ScriptServiceImpl;
 import com.forgebrain.backend.services.StoryboardServiceImpl;
+import com.forgebrain.backend.services.SubtitleServiceImpl;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Builds a real {@link Storyboard} through the actual (heuristic) pipeline chain — exactly the
@@ -28,6 +36,9 @@ import org.junit.jupiter.api.Test;
  * assertions exercise {@link RenderPlanBuilder} against genuine pipeline output.
  */
 class RenderPlanBuilderTest {
+
+    @TempDir
+    java.nio.file.Path tempDir;
 
     private RenderPlanBuilder renderPlanBuilder;
     private Storyboard storyboard;
@@ -193,5 +204,97 @@ class RenderPlanBuilderTest {
                 assertThat(cue.sceneId()).isEqualTo(scene.sceneId());
             }
         }
+    }
+
+    // --- Enriched (Voice/Subtitle/Asset-aware) overload -----------------------------------------
+
+    private static final double SCALE_FACTOR = 1.5;
+
+    private VoiceResult scaledVoiceResult() {
+        List<SceneAudio> scenes = storyboard.scenes().stream()
+                .map(scene -> new SceneAudio(scene.sceneId(), "voiceover/" + storyboard.topicId(),
+                        scene.duration(), round(scene.duration() * SCALE_FACTOR), 0.0, List.of()))
+                .toList();
+        double totalActual = scenes.stream().mapToDouble(SceneAudio::actualDurationSeconds).sum();
+        return new VoiceResult(storyboard.topicId(), storyboard.topicTitle(),
+                new VoiceResult.VoiceProfile("en-US-Neural2-C", "en-US", 1.0, 0.0), scenes,
+                storyboard.totalDurationSeconds(), totalActual, round(totalActual - storyboard.totalDurationSeconds()),
+                false, 2.0, VoiceResult.AudioFormat.AUDIO_WAV, 44100,
+                new com.forgebrain.backend.shared.ConfidenceNotes(
+                        com.forgebrain.backend.shared.ConfidenceLevel.MEDIUM, List.of(), List.of()),
+                "1.0.0-test-fixture", java.time.Instant.now(), storyboard.storyboardVersion());
+    }
+
+    @Test
+    void enrichedBuildUsesFontsAndWatermarkAndMusicFromTheAssetManifestNotThePlaceholderTable() {
+        VoiceResult voiceResult = scaledVoiceResult();
+        SubtitleResult subtitleResult = new SubtitleServiceImpl().generateSubtitles(storyboard, voiceResult);
+        RenderingConfig renderingConfig = new RenderingConfig("ffmpeg", "ffprobe",
+                tempDir.resolve("renders").toString(), tempDir.resolve("voiceover").toString(),
+                tempDir.resolve("empty-assets").toString());
+        AssetManifest assetManifest = new AssetServiceImpl(renderingConfig).resolveAssets(storyboard);
+
+        RenderPlan plan = renderPlanBuilder.build(storyboard, voiceResult, subtitleResult, assetManifest);
+
+        assertThat(plan.fonts().heading()).isEqualTo(assetManifest.resolvedTheme().fontHeading());
+        assertThat(plan.fonts().body()).isEqualTo(assetManifest.resolvedTheme().fontBody());
+        assertThat(plan.fonts().code()).isEqualTo(assetManifest.resolvedTheme().fontCode());
+        assertThat(plan.audio().backgroundMusicRef()).isEqualTo(assetManifest.backgroundMusic().trackUri());
+        assertThat(plan.globalAssetRefs()).contains(
+                new RenderPlan.GlobalAssetRef(AssetCategory.WATERMARK, assetManifest.watermark().assetUri()));
+        assertThat(plan.renderPlanVersion()).isEqualTo("1.0.0-reconciled");
+    }
+
+    @Test
+    void enrichedBuildUsesVoiceResultsRealDurationsForSceneTimingInsteadOfTheStoryboardsEstimate() {
+        VoiceResult voiceResult = scaledVoiceResult();
+        SubtitleResult subtitleResult = new SubtitleServiceImpl().generateSubtitles(storyboard, voiceResult);
+        RenderingConfig renderingConfig = new RenderingConfig("ffmpeg", "ffprobe",
+                tempDir.resolve("renders").toString(), tempDir.resolve("voiceover").toString(),
+                tempDir.resolve("empty-assets").toString());
+        AssetManifest assetManifest = new AssetServiceImpl(renderingConfig).resolveAssets(storyboard);
+
+        RenderPlan plan = renderPlanBuilder.build(storyboard, voiceResult, subtitleResult, assetManifest);
+
+        // Real durations are 1.5x the estimate, so total duration must reflect that, not the
+        // storyboard's original (unscaled) estimate.
+        assertThat(plan.totalDurationSeconds())
+                .isCloseTo(storyboard.totalDurationSeconds() * SCALE_FACTOR, org.assertj.core.data.Offset.offset(0.5));
+        assertThat(plan.totalDurationSeconds()).isNotCloseTo(storyboard.totalDurationSeconds(),
+                org.assertj.core.data.Offset.offset(0.5));
+
+        // Scenes remain contiguous in the reconciled (real) timeline.
+        double cursor = 0.0;
+        for (SceneRenderPlan scene : plan.scenes()) {
+            assertThat(scene.startTime()).isCloseTo(cursor, org.assertj.core.data.Offset.offset(0.01));
+            cursor = scene.endTime();
+        }
+    }
+
+    @Test
+    void enrichedBuildsSubtitleTimelineComesFromTheReconciledSubtitleResultNotRawStoryboardSegments() {
+        VoiceResult voiceResult = scaledVoiceResult();
+        SubtitleResult subtitleResult = new SubtitleServiceImpl().generateSubtitles(storyboard, voiceResult);
+        RenderingConfig renderingConfig = new RenderingConfig("ffmpeg", "ffprobe",
+                tempDir.resolve("renders").toString(), tempDir.resolve("voiceover").toString(),
+                tempDir.resolve("empty-assets").toString());
+        AssetManifest assetManifest = new AssetServiceImpl(renderingConfig).resolveAssets(storyboard);
+
+        RenderPlan plan = renderPlanBuilder.build(storyboard, voiceResult, subtitleResult, assetManifest);
+
+        int expectedCueCount = subtitleResult.scenes().stream().mapToInt(s -> s.segments().size()).sum();
+        assertThat(plan.subtitles().cues()).hasSize(expectedCueCount);
+        assertThat(plan.subtitles().style()).isEqualTo(subtitleResult.subtitleStyle());
+        assertThat(plan.subtitles().totalDurationSeconds()).isEqualTo(subtitleResult.totalDurationSeconds());
+
+        // Reconciled (scaled) timing, not the storyboard's original unscaled segment timing.
+        SubtitleTimeline.SubtitleCue firstCue = plan.subtitles().cues().get(0);
+        Scene.TimedSubtitleSegment firstOriginalSegment = storyboard.scenes().get(0).subtitleSegments().get(0);
+        assertThat(firstCue.startTime())
+                .isCloseTo(firstOriginalSegment.startTime() * SCALE_FACTOR, org.assertj.core.data.Offset.offset(0.1));
+    }
+
+    private static double round(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 }

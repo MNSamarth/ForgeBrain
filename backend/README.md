@@ -37,6 +37,7 @@ Two organizing principles are layered on top of each other, both requested expli
 | `rendering` | The rendering foundation (`RenderPlan`, `SceneRenderPlan`, `RenderAssetManifest`, `SubtitleTimeline`, `RenderPlanBuilder`, `AssetCollector`, `RenderValidator`) plus its real FFmpeg execution path in `rendering.ffmpeg` (`FfmpegRenderEngine`, `RenderCommandBuilder`, `SrtWriter`, `PlaceholderAssetResolver`). See "Rendering Foundation" and "Storyboard to MP4" below. |
 | `job` | The durable job layer on top of `ReelExportService`: `ReelJob`, `ReelJobRepository`, `OutputPackagingService`, `OutputStorage`, `ReelJobReport`, `ReelJobService`. See "Reel Job System" below. |
 | `runtime` | The single coordinator on top of `ReelJobService`: `ForgeBrainRuntime`, `RuntimeState`, `RuntimeReport`, `RuntimeReportWriter`. See "ForgeBrain Runtime" below. |
+| `validation` | The Production Validation Suite: `PipelineInvariants`, `ArtifactValidator`, `ProductionReadinessReport`/`ProductionReadinessReportWriter`. See "Production Validation" below. |
 | `analytics` | Two generations of analytics types side by side: `PerformanceSnapshot`/`StrategyPerformanceAggregate` (real audience/platform metrics — see `analytics/analytics-spec.md`, still not active, no publishing integration posts anywhere real yet) and `ReelOutcomeSnapshot`/`TopicPerformanceAggregate`/`DimensionPerformanceAggregate`/`AnalyticsReport` plus `AnalyticsAggregator`/`AnalyticsMemoryFeedback` (real pipeline-outcome analytics, active today — see "Analytics / Feedback Loop" below). |
 | `publishing` | `PublishingMetadataGenerator`, `PlatformFormatter` (per-platform metadata formatting), and the `PlatformPublishAdapter` seam — dry-run (`AbstractDryRunPlatformPublishAdapter`, `YouTubeShortsPublishAdapter`, `InstagramReelsPublishAdapter`) and real (`YouTubeRealPublishAdapter`, `InstagramRealPublishAdapter`) implementations, chosen per platform by `PlatformPublishAdapterFactory`/`PlatformPublishAdapterBeanConfig`. See "Publishing" and "Real Platform Publishing" below. |
 
@@ -910,6 +911,56 @@ the way (a retried reel's earlier failures included, not just the final outcome)
 (`runtime/RuntimeState.java`) is the mutable accumulator behind all of this while a run is still
 in progress — the same "mutable in-progress / immutable finished snapshot" split as
 `PipelineContext`/`PipelineResult` for one pipeline run, just at the batch level.
+
+## Production Validation
+
+`validation/` is a Production Validation Suite over the pipeline the Runtime already executes —
+not a new pipeline stage, not a replacement for any existing test. It never calls a service or
+re-runs a stage; it only inspects records the pipeline already produces (`ReelJobReport`,
+`ReelJob`, `RuntimeReport`, `ReelOutcomeSnapshot`, `MemoryState.TopicRecord`,
+`PublishingPackage`, `AnalyticsReport`).
+
+**What it covers.**
+
+- `PipelineInvariants` (`validation/PipelineInvariants.java`) — six reusable, pure assertions,
+  each returning the violations found (empty = held): every stage runs at most once per reel,
+  stages execute in canonical order, a completed job has every required output artifact, publishing
+  only ever ran after an `APPROVED` review, an analytics snapshot's publish status agrees with the
+  job's own, and memory reflects an analytics snapshot's review score.
+- `ArtifactValidator` (`validation/ArtifactValidator.java`) — structural/consistency checks for
+  the four artifact shapes this suite validates: the runtime report, the render portion of a job
+  report, a publishing package, and an analytics report.
+- `ProductionReadinessReport`/`ProductionReadinessReportWriter` — aggregates every check above
+  into one pass/fail report, written as JSON under
+  `<forgebrain.local-storage.execution-report-directory>/validation/<validationId>.json` — mirrors
+  `RuntimeReportWriter`'s convention.
+
+**Test coverage** (`src/test/.../validation/`), matching each of this suite's parts:
+
+| Test class | Covers |
+| --- | --- |
+| `ProductionValidationSuiteTest` | Part 1 — runs the real `ForgeBrainRuntime` end to end (real curriculum, real `ffmpeg`, no real cloud credentials) and confirms every subsystem was genuinely reached: topic selection occurred, the AI Gateway was actually invoked for all four generative prompts (via `AiGateway.metricsSnapshot()`, not just log-watching), rendering completed, review executed, publishing was reached and stayed dry-run, analytics executed, and a `RuntimeReport` was produced — then runs every invariant/artifact check against the real result and writes a `ProductionReadinessReport`. |
+| `PipelineInvariantsTest`, `ArtifactValidatorTest` | Part 2, Part 4 — each check's positive and negative cases, as fast fixture-based unit tests. |
+| `ProductionValidationFailureScenariosTest` | Part 3 — one fixture per named failure type (AI, render, reviewer rejection, publishing, analytics), proving each is shaped correctly *and* that the checks catch a deliberately broken fixture of the same shape (e.g. publishing run despite a rejected review) — the "detect regressions between subsystems" goal. The Runtime's own retry/continue-on-failure behavior is already covered by `ForgeBrainRuntimeImplTest` and isn't repeated here. |
+| `ConfigurationValidationTest` | Part 5 — boots the real application (`SpringApplicationBuilder`, no embedded server) under each named configuration: default dry-run, publishing disabled per platform, real upload enabled with missing credentials (starts fine; fails at publish time, not startup), local storage, cloud storage enabled without a bucket (fails fast, as designed), and custom runtime/AI Gateway retry configuration. |
+| `ProductionReadinessReportWriterImplTest` | Confirms the readiness report writes, and round-trips, correctly. |
+
+**How to execute it.**
+
+```bash
+./mvnw test -Dtest="com.forgebrain.backend.validation.*"
+```
+
+Or as part of the full suite (`./mvnw test`) — no real cloud credentials are required for any of
+it; `ProductionValidationSuiteTest` needs a local `ffmpeg` binary (same requirement as
+`ReelJobServiceImplTest`/`ForgeBrainRuntimeIntegrationTest`) and skips itself via
+`Assumptions.assumeTrue` if one isn't found.
+
+**Expected outputs.** A green run of `ProductionValidationSuiteTest` writes one
+`ProductionReadinessReport` (`passed: true`, every check's violation list empty) alongside the
+`RuntimeReport` it validated, both under `reports/` in whatever `execution-report-directory` is
+configured. A regression in any covered invariant fails that specific named check in the report
+(and the test), rather than a generic "something broke."
 
 ## What's Deliberately Not Here
 

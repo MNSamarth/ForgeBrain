@@ -26,4 +26,12 @@ public interface OutputPackagingService {
      * (and describes) the rest of the package.
      */
     String storeReport(String jobId, Path reportFile);
+
+    /**
+     * Stores one publishing-stage file (the {@code publishing-package.json} bundle, or a platform
+     * adapter's dry-run payload) through the same {@link OutputStorage} seam — kept as its own
+     * method rather than reusing {@link #storeReport}, since a publishing artifact isn't a report
+     * and callers/logs should say so.
+     */
+    String storePublishingArtifact(String jobId, Path file);
 }

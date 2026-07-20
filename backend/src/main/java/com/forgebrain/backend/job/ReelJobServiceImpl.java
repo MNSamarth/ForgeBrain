@@ -3,6 +3,11 @@ package com.forgebrain.backend.job;
 import com.forgebrain.backend.config.RenderingConfig;
 import com.forgebrain.backend.exceptions.RenderExecutionException;
 import com.forgebrain.backend.models.AssetManifest;
+import com.forgebrain.backend.models.ContentStrategy;
+import com.forgebrain.backend.models.PublishingResult;
+import com.forgebrain.backend.models.QualityScore;
+import com.forgebrain.backend.models.ReviewResult;
+import com.forgebrain.backend.models.Script;
 import com.forgebrain.backend.models.SubtitleResult;
 import com.forgebrain.backend.models.VideoPackage;
 import com.forgebrain.backend.models.VoiceResult;
@@ -17,13 +22,18 @@ import com.forgebrain.backend.rendering.RenderValidationResult.ValidationIssue;
 import com.forgebrain.backend.rendering.RenderValidationResult.ValidationIssue.Severity;
 import com.forgebrain.backend.rendering.RenderValidator;
 import com.forgebrain.backend.services.AssetService;
+import com.forgebrain.backend.services.PublishingService;
+import com.forgebrain.backend.services.ReelAnalyticsService;
+import com.forgebrain.backend.services.ReviewerService;
 import com.forgebrain.backend.services.SubtitleService;
 import com.forgebrain.backend.services.VoiceService;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -55,6 +65,9 @@ public class ReelJobServiceImpl implements ReelJobService {
     private final RenderValidator renderValidator;
     private final RenderEngine renderEngine;
     private final RenderingConfig renderingConfig;
+    private final ReviewerService reviewerService;
+    private final PublishingService publishingService;
+    private final ReelAnalyticsService reelAnalyticsService;
     private final OutputPackagingService outputPackagingService;
     private final ReelJobReportWriter reportWriter;
     private final ReelJobRepository jobRepository;
@@ -62,8 +75,9 @@ public class ReelJobServiceImpl implements ReelJobService {
     public ReelJobServiceImpl(PipelineOrchestrator pipelineOrchestrator, VoiceService voiceService,
             SubtitleService subtitleService, AssetService assetService, RenderPlanBuilder renderPlanBuilder,
             RenderValidator renderValidator, RenderEngine renderEngine, RenderingConfig renderingConfig,
-            OutputPackagingService outputPackagingService, ReelJobReportWriter reportWriter,
-            ReelJobRepository jobRepository) {
+            ReviewerService reviewerService, PublishingService publishingService,
+            ReelAnalyticsService reelAnalyticsService, OutputPackagingService outputPackagingService,
+            ReelJobReportWriter reportWriter, ReelJobRepository jobRepository) {
         this.pipelineOrchestrator = pipelineOrchestrator;
         this.voiceService = voiceService;
         this.subtitleService = subtitleService;
@@ -72,6 +86,9 @@ public class ReelJobServiceImpl implements ReelJobService {
         this.renderValidator = renderValidator;
         this.renderEngine = renderEngine;
         this.renderingConfig = renderingConfig;
+        this.reviewerService = reviewerService;
+        this.publishingService = publishingService;
+        this.reelAnalyticsService = reelAnalyticsService;
         this.outputPackagingService = outputPackagingService;
         this.reportWriter = reportWriter;
         this.jobRepository = jobRepository;
@@ -90,6 +107,8 @@ public class ReelJobServiceImpl implements ReelJobService {
         job = jobRepository.update(job.running());
 
         RenderValidationResult validation = null;
+        ReviewResult reviewResult = null;
+        PublishingResult publishingResult = null;
         try {
             PipelineResult pipelineResult = runStage("AI_PIPELINE", stageResults,
                     () -> pipelineOrchestrator.runFullPipeline(),
@@ -141,10 +160,27 @@ public class ReelJobServiceImpl implements ReelJobService {
                     r -> "video=" + r.videoFileUri() + ", size=" + r.fileSizeBytes() + "b");
             job = jobRepository.update(job.withRenderChecksum(videoPackage.checksum()));
 
-            job = jobRepository.update(job.packaging());
             Path renderDirectory = Path.of(videoPackage.videoFileUri()).getParent();
-            job = jobRepository.update(job.withOutputDirectory(renderDirectory.toString()));
             Path subtitleFile = renderDirectory.resolve("subtitles.srt");
+
+            job = jobRepository.update(job.reviewing());
+            reviewResult = runStage("REVIEWING", stageResults,
+                    () -> {
+                        QualityScore qualityScore = reviewerService.scoreQuality(videoPackage,
+                                pipelineResult.storyboard(), voiceResult, subtitleResult, assetManifest,
+                                pipelineResult.lesson(), pipelineResult.script(), pipelineResult.contentStrategy());
+                        return reviewerService.review(jobId, videoPackage, qualityScore, pipelineResult.lesson(),
+                                pipelineResult.script(), subtitleFile.toString());
+                    },
+                    r -> "verdict=" + r.verdict() + ", action=" + r.recommendedAction() + ", score=" + r.score());
+            job = jobRepository.update(job.withReviewResult(reviewResult));
+            if (reviewResult.verdict() != ReviewResult.Verdict.APPROVED) {
+                job = jobRepository.update(job.withWarning("REVIEW: " + reviewResult.verdict() + " ("
+                        + reviewResult.recommendedAction() + ") — " + reviewResult.reviewerNotes()));
+            }
+
+            job = jobRepository.update(job.packaging());
+            job = jobRepository.update(job.withOutputDirectory(renderDirectory.toString()));
             ReelOutputPackage outputPackage;
             try {
                 outputPackage = outputPackagingService.packageOutputs(jobId, renderDirectory, videoPackage, subtitleFile);
@@ -156,15 +192,44 @@ public class ReelJobServiceImpl implements ReelJobService {
                 throw packagingException;
             }
 
+            if (reviewResult.verdict() == ReviewResult.Verdict.APPROVED) {
+                ReviewResult approvedReviewResult = reviewResult;
+                job = jobRepository.update(job.publishing());
+                publishingResult = runStage("PUBLISHING", stageResults,
+                        () -> publishingService.publish(jobId, renderDirectory, approvedReviewResult, videoPackage,
+                                subtitleFile.toString(), pipelineResult.lesson(), pipelineResult.script()),
+                        r -> "status=" + r.status() + ", platforms=" + r.platformOutcomes().size());
+
+                Map<String, String> publishingOutputFiles = new LinkedHashMap<>();
+                publishingOutputFiles.put("publishing_package",
+                        outputPackagingService.storePublishingArtifact(jobId,
+                                Path.of(publishingResult.packageFileReference())));
+                for (var outcome : publishingResult.platformOutcomes()) {
+                    if (outcome.payloadReference() != null) {
+                        publishingOutputFiles.put("publishing_" + outcome.platform().name().toLowerCase(Locale.ROOT),
+                                outputPackagingService.storePublishingArtifact(jobId, Path.of(outcome.payloadReference())));
+                    }
+                }
+                job = jobRepository.update(job.withOutputFiles(publishingOutputFiles)
+                        .withPublishingStatus(publishingResult.status().name()));
+            } else {
+                job = jobRepository.update(job.withPublishingStatus("SKIPPED_NOT_APPROVED")
+                        .withWarning("PUBLISHING: skipped — review verdict was " + reviewResult.verdict()
+                                + "; only APPROVED reels are published."));
+            }
+
             job = jobRepository.update(job.completed());
 
             ReelJobReport report = buildReport(jobId, pipelineRunId, pipelineResult.topicId(), executionStart,
                     stageResults, validation, "COMPLETED", job.warnings(), errors, job.fallbackStages(),
                     job.outputFiles(), "packaged and stored " + outputPackage.files().size() + " file(s): "
-                            + String.join(", ", outputPackage.files().keySet()));
+                            + String.join(", ", outputPackage.files().keySet()), reviewResult, publishingResult);
             String reportPath = reportWriter.write(report, renderDirectory);
             String reportRef = outputPackagingService.storeReport(jobId, Path.of(reportPath));
             job = jobRepository.update(job.withOutputFiles(Map.of("report", reportRef)));
+
+            recordAnalyticsOutcome(job, report, pipelineResult.contentStrategy(), pipelineResult.script(),
+                    videoPackage);
 
             return job;
         } catch (Exception e) {
@@ -177,7 +242,7 @@ public class ReelJobServiceImpl implements ReelJobService {
                     : Path.of(renderingConfig.outputDirectory(), "failed-job-" + jobId);
             ReelJobReport report = buildReport(jobId, pipelineRunId, job.topicId(), executionStart, stageResults,
                     validation, "FAILED", job.warnings(), errors, job.fallbackStages(), job.outputFiles(),
-                    "packaging did not complete");
+                    "packaging did not complete", reviewResult, publishingResult);
             try {
                 String reportPath = reportWriter.write(report, reportDirectory);
                 job = jobRepository.update(job.withOutputFiles(Map.of("report", reportPath)));
@@ -185,6 +250,8 @@ public class ReelJobServiceImpl implements ReelJobService {
                 log.error("Failed to write failure report for job '{}'; the job's FAILED status was still"
                         + " persisted.", jobId, reportWriteException);
             }
+
+            recordAnalyticsOutcome(job, report, null, null, null);
 
             log.error("Reel job '{}' failed: {}", jobId, e.getMessage(), e);
             return job;
@@ -224,13 +291,31 @@ public class ReelJobServiceImpl implements ReelJobService {
     private ReelJobReport buildReport(String jobId, String pipelineRunId, String topicId, Instant executionStart,
             List<StageExecutionSummary> stageResults, RenderValidationResult validation, String status,
             List<String> warnings, List<String> errors, List<String> fallbackStages,
-            Map<String, String> outputPaths, String packagingSummary) {
+            Map<String, String> outputPaths, String packagingSummary, ReviewResult reviewResult,
+            PublishingResult publishingResult) {
         Instant executionEnd = Instant.now();
         return new ReelJobReport(jobId, pipelineRunId, topicId, executionStart, executionEnd,
                 Duration.between(executionStart, executionEnd), List.copyOf(stageResults), status,
                 Map.copyOf(outputPaths), List.copyOf(warnings), List.copyOf(errors),
                 List.copyOf(fallbackStages), validation != null ? describeValidation(validation) : null,
-                packagingSummary);
+                packagingSummary, reviewResult, publishingResult);
+    }
+
+    /**
+     * Captures this job's analytics snapshot and feeds it back into memory — best-effort, so an
+     * analytics failure (e.g. a disk error writing the snapshot file) never turns an otherwise
+     * successfully recorded job into a failure. {@code contentStrategy}/{@code script}/{@code
+     * videoPackage} are {@code null} for a job that failed before producing them (see the catch
+     * block above).
+     */
+    private void recordAnalyticsOutcome(ReelJob job, ReelJobReport report, ContentStrategy contentStrategy,
+            Script script, VideoPackage videoPackage) {
+        try {
+            reelAnalyticsService.recordOutcome(job, report, contentStrategy, script, videoPackage);
+        } catch (RuntimeException analyticsException) {
+            log.error("Analytics ingestion failed for job '{}'; the job's own result is unaffected.", job.jobId(),
+                    analyticsException);
+        }
     }
 
     private static String describeValidation(RenderValidationResult validation) {

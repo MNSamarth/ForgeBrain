@@ -11,11 +11,12 @@
  *
  * <p><b>Implementation status</b> (see {@code NEXT_EXECUTION.md} for detail): {@link
  * MemoryService}, {@link TopicSelector}, {@link ResearchService}, {@link LessonService},
- * {@link ContentDirectorService}, {@link ScriptService}, and {@link StoryboardService} have
- * real implementations, covering topic selection through storyboard generation. {@link
- * VoiceService}, {@link SubtitleService}, {@link AssetService}, {@link RendererService},
- * {@link ReviewerService}, {@link PublishingService}, and {@link AnalyticsService} remain
- * contracts only — rendering, review, and publishing were explicitly out of scope for this
- * pass (see TODO.md).
+ * {@link ContentDirectorService}, {@link ScriptService}, {@link StoryboardService}, {@link
+ * VoiceService}, {@link SubtitleService}, {@link AssetService}, and {@link ReviewerService}
+ * have real implementations, covering topic selection through the post-render quality gate.
+ * {@link RendererService} (superseded by {@code com.forgebrain.backend.rendering}'s real FFmpeg
+ * path — see backend/README.md's "Storyboard to MP4" section), {@link PublishingService}, and
+ * {@link AnalyticsService} remain contracts only — publishing was explicitly out of scope for
+ * this pass (see TODO.md).
  */
 package com.forgebrain.backend.services;

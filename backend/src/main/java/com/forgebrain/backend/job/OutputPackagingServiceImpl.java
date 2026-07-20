@@ -46,6 +46,11 @@ public class OutputPackagingServiceImpl implements OutputPackagingService {
         return outputStorage.store(jobId, reportFile);
     }
 
+    @Override
+    public String storePublishingArtifact(String jobId, Path file) {
+        return outputStorage.store(jobId, file);
+    }
+
     private Path writeMetadata(Path renderDirectory, VideoPackage videoPackage) {
         Path metadataFile = renderDirectory.resolve(METADATA_FILE_NAME);
         try {

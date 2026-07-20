@@ -24,7 +24,14 @@ public record QualityScore(
 
     /**
      * Reused for both {@code dimensions} (0-1 scores) and {@code scoringWeightsUsed} (weights
-     * summing to a caller-defined total) — see quality-scoring-schema.json, which does the same.
+     * summing to a caller-defined total) — see quality-scoring-schema.json, which does the same,
+     * and {@link com.forgebrain.backend.config.ReviewerConfig#dimensionWeights()}, which supplies
+     * the weights. The original six dimensions ({@code technicalAccuracy} through {@code
+     * brandConsistency}) are unchanged; {@code visualReadability}, {@code subtitleQuality}, and
+     * {@code retentionPotential} were added for the Reviewer stage (see {@code
+     * com.forgebrain.backend.services.QualityScorer}) to cover subtitle legibility, subtitle
+     * timing correctness, and overall watch-through likelihood, none of which the original six
+     * dimensions measured.
      */
     public record Dimensions(
             double technicalAccuracy,
@@ -32,7 +39,10 @@ public record QualityScore(
             double hookStrength,
             double educationalClarity,
             double productionPolish,
-            double brandConsistency
+            double brandConsistency,
+            double visualReadability,
+            double subtitleQuality,
+            double retentionPotential
     ) {
     }
 
@@ -40,6 +50,7 @@ public record QualityScore(
     }
 
     public enum Dimension {
-        TECHNICAL_ACCURACY, PACING_FIT, HOOK_STRENGTH, EDUCATIONAL_CLARITY, PRODUCTION_POLISH, BRAND_CONSISTENCY
+        TECHNICAL_ACCURACY, PACING_FIT, HOOK_STRENGTH, EDUCATIONAL_CLARITY, PRODUCTION_POLISH, BRAND_CONSISTENCY,
+        VISUAL_READABILITY, SUBTITLE_QUALITY, RETENTION_POTENTIAL
     }
 }

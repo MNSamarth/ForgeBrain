@@ -74,3 +74,37 @@ forgebrain:
     jobs-directory: "data/jobs"
     output-storage-root: "data/job-output"
     run-on-startup: false
+  reviewer:
+    approval-threshold: 0.7
+    dimension-floor: 0.5
+    duration-mismatch-tolerance-seconds: 3.0
+    script-length-tolerance-ratio: 1.25
+    max-subtitle-reading-chars-per-second: 20.0
+    dimension-weights:
+      technical-accuracy: 0.25
+      pacing-fit: 0.15
+      hook-strength: 0.15
+      educational-clarity: 0.15
+      production-polish: 0.1
+      brand-consistency: 0.05
+      visual-readability: 0.05
+      subtitle-quality: 0.05
+      retention-potential: 0.05
+    reviewer-version: "1.0.0"
+    scoring-version: "1.0.0"
+  publishing:
+    publishing-version: "1.0.0"
+    default-hashtags: ["#java", "#coding", "#shorts"]
+    default-category: "Education"
+    default-language-code: "en-US"
+    title-max-length: 100
+    description-max-length: 2000
+  analytics:
+    snapshots-directory: "data/analytics/snapshots"
+    reports-directory: "data/analytics/reports"
+    snapshot-version: "1.0.0"
+    performance-score-smoothing: 0.5
+    trend-significance-threshold: 0.05
+    revision-priority-high-threshold: 0.6
+    strong-performer-approval-rate-threshold: 0.8
+    cooldown-days-on-rejection: 14

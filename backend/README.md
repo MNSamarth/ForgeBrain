@@ -17,8 +17,8 @@ Two organizing principles are layered on top of each other, both requested expli
 | --- | --- |
 | `config` | Configuration placeholders (Vertex AI, Cloud Storage, Firestore, Cloud Scheduler, Cloud Run, general application). See `docs/CONFIGURATION.md`. |
 | `controllers` | HTTP endpoints. Only a health check exists — see Section 3. |
-| `services` | One interface per pipeline stage (14 total) plus `MemoryService`. Topic Selection, Memory, Research, Lesson, Content Director, Script, Storyboard, Voice, Subtitles, and Assets all have real implementations now — see the stage sections below. Only Renderer's job-lifecycle management (`RendererService`), Reviewer, and Publishing remain interface-only. |
-| `models` | 19 immutable domain records, one per pipeline artifact, mirroring every `*-schema.json` in `brain/`, `renderer/`, `reviewer/`, `publishing/`. |
+| `services` | One interface per pipeline stage (14 total) plus `MemoryService` and `ReelAnalyticsService`. Topic Selection, Memory, Research, Lesson, Content Director, Script, Storyboard, Voice, Subtitles, Assets, Reviewer, Publishing, and analytics ingestion/feedback all have real implementations now — see the stage sections below. Only Renderer's job-lifecycle management (`RendererService`) and `AnalyticsService` (reserved for real audience/platform metrics — see "Analytics / Feedback Loop" below) remain interface-only. |
+| `models` | 22 immutable domain records, one per pipeline artifact, mirroring every `*-schema.json` in `brain/`, `renderer/`, `reviewer/`, `publishing/`. |
 | `entities` | The small subset of state that's actually persisted (memory, topic tracking, pipeline runs) — see Section 4 for why these are shaped differently from `models`. |
 | `dto` | API request/response wrappers, decoupled from the internal `models` shapes. |
 | `repositories` | Persistence contracts for `entities`. |
@@ -35,8 +35,8 @@ Two organizing principles are layered on top of each other, both requested expli
 | `curriculum` | `CurriculumLoader`, `RoadmapLevel` — reading `curriculum/java-roadmap.json`. |
 | `rendering` | The rendering foundation (`RenderPlan`, `SceneRenderPlan`, `RenderAssetManifest`, `SubtitleTimeline`, `RenderPlanBuilder`, `AssetCollector`, `RenderValidator`) plus its real FFmpeg execution path in `rendering.ffmpeg` (`FfmpegRenderEngine`, `RenderCommandBuilder`, `SrtWriter`, `PlaceholderAssetResolver`). See "Rendering Foundation" and "Storyboard to MP4" below. |
 | `job` | The durable job layer on top of `ReelExportService`: `ReelJob`, `ReelJobRepository`, `OutputPackagingService`, `OutputStorage`, `ReelJobReport`, `ReelJobService`. See "Reel Job System" below. |
-| `analytics` | `PerformanceSnapshot`, `StrategyPerformanceAggregate` — see `analytics/analytics-spec.md`. Not active in Phase 1. |
-| `publishing` | `PlatformFormatter` — per-platform metadata formatting. |
+| `analytics` | Two generations of analytics types side by side: `PerformanceSnapshot`/`StrategyPerformanceAggregate` (real audience/platform metrics — see `analytics/analytics-spec.md`, still not active, no publishing integration posts anywhere real yet) and `ReelOutcomeSnapshot`/`TopicPerformanceAggregate`/`DimensionPerformanceAggregate`/`AnalyticsReport` plus `AnalyticsAggregator`/`AnalyticsMemoryFeedback` (real pipeline-outcome analytics, active today — see "Analytics / Feedback Loop" below). |
+| `publishing` | `PublishingMetadataGenerator`, `PlatformFormatter` (per-platform metadata formatting), and the `PlatformPublishAdapter` seam (`AbstractDryRunPlatformPublishAdapter`, `YouTubeShortsPublishAdapter`, `InstagramReelsPublishAdapter`). See "Publishing" below. |
 
 ## Design Decisions Worth Knowing About
 
@@ -408,23 +408,77 @@ diff from before this layer was added; the job layer reuses the same lower-level
 snapshot (never mutates in place) and is directly unit-tested in isolation (`ReelJobTest`):
 
 ```
-QUEUED → RUNNING → VALIDATING → RENDERING → PACKAGING → COMPLETED
-                                                        ↘ FAILED (from any stage)
+QUEUED → RUNNING → VALIDATING → RENDERING → REVIEWING → PACKAGING → PUBLISHING → COMPLETED
+                                                                                ↘ FAILED (from any stage)
 ```
 
 `QUEUED` (job created) → `RUNNING` (AI pipeline through render-plan construction) → `VALIDATING`
-(`RenderValidator`) → `RENDERING` (`RenderEngine`) → `PACKAGING` (`OutputPackagingService`) →
-`COMPLETED`. Each `ReelJob` carries: `jobId` and a separate `pipelineRunId` (a distinct
-correlation id per execution attempt — see the class javadoc for why "rerun" means "submit a new
-job" today, not retry-in-place), topic id/title, `createdAt`/`startedAt`/`completedAt`/`duration`,
+(`RenderValidator`) → `RENDERING` (`RenderEngine`) → `REVIEWING` (`ReviewerService` — see
+"Reviewer / Quality Gate" below) → `PACKAGING` (`OutputPackagingService`) → `PUBLISHING`
+(`PublishingService`, only for an `APPROVED` review — see "Publishing" below) → `COMPLETED`.
+Each `ReelJob` carries: `jobId` and a separate `pipelineRunId` (a distinct correlation id per
+execution attempt — see the class javadoc for why "rerun" means "submit a new job" today, not
+retry-in-place), topic id/title, `createdAt`/`startedAt`/`completedAt`/`duration`,
 `outputDirectory`, `outputFiles` (category → stored reference), `failureReason`, `warnings`,
-`fallbackStages` (which stages used a documented fallback), and `renderChecksum` (from the
-rendered `VideoPackage`, once rendering completes).
+`fallbackStages` (which stages used a documented fallback), `renderChecksum` (from the rendered
+`VideoPackage`, once rendering completes), `reviewVerdict`/`recommendedAction` (from the
+`REVIEWING` stage, once it completes), and `publishingStatus` (from the `PUBLISHING` stage, or
+`"SKIPPED_NOT_APPROVED"` if the review verdict never reached `APPROVED`).
 
-**`ReelJobService.submitJob()` never throws** for a pipeline/render/packaging failure — unlike
-`ReelExportService.exportReel()`, it always returns a `ReelJob`, with `Status.FAILED` and
-`failureReason` set when something went wrong. That's the intended job-system contract: inspect
-the returned record's status instead of wrapping the call in try/catch.
+Once a job reaches `COMPLETED` or `FAILED`, `ReelAnalyticsService` captures a durable outcome
+snapshot and feeds a signal back into memory — not a lifecycle status of its own (it runs after
+the job record is already final), but every job passes through it. See "Analytics / Feedback
+Loop" below.
+
+**`ReelJobService.submitJob()` never throws** for a pipeline/render/review/packaging/publishing
+failure — unlike `ReelExportService.exportReel()`, it always returns a `ReelJob`, with `Status
+.FAILED` and `failureReason` set when something went wrong. That's the intended job-system
+contract: inspect the returned record's status instead of wrapping the call in try/catch. A
+**rejected or needs-revision review verdict is not a job failure** — the job still reaches
+`COMPLETED` (a `REVIEW: ...` warning is added instead, and `PUBLISHING` is skipped rather than
+attempted), since scoring a reel poorly is a legitimate content decision, not a broken pipeline
+run; see "Reviewer / Quality Gate" and "Publishing" below.
+
+### Reviewer / Quality Gate
+
+`ReviewerServiceImpl` (`services/ReviewerServiceImpl.java`) is the pipeline's final quality gate
+— it runs once per job, right after `RENDERING` and before `PACKAGING`, and never touches
+rendering or AI-pipeline logic itself. It combines two independent checks, never averaged
+together:
+
+- **Hard gates** — the script must not contain any statement `Lesson.whatToAvoidSaying` flags,
+  and every output artifact (video, thumbnail if present, subtitles) must exist on disk. Either
+  failure alone forces a `REJECTED` verdict, regardless of how well everything else scored.
+- **Scored judgment** — `QualityScorer` (`services/QualityScorer.java`) computes nine 0–1
+  dimensions (`technical_accuracy`, `pacing_fit`, `hook_strength`, `educational_clarity`,
+  `production_polish`, `brand_consistency`, `visual_readability`, `subtitle_quality`,
+  `retention_potential`) from real pipeline artifacts — script text, voice drift, subtitle
+  timing, the resolved asset manifest — and a configured weighted average, `overall_score`. If
+  `overall_score` or any single dimension falls below its configured threshold
+  (`forgebrain.reviewer.*` in application.yml), the verdict is `NEEDS_REVISION` rather than a
+  rejection: the reel isn't necessarily wrong, just not good enough yet.
+
+Every check is mechanical and explainable — no AI judgment call is involved in this first
+version, per this mission's "keep the reviewer deterministic and explainable." `hook_strength`
+and `retention_potential` are the weakest proxies (hook word count/strategy match, and an
+average of `hook_strength`/`pacing_fit`, respectively) and are flagged as such in both
+`dimension_notes` and the review's `confidence_notes`.
+
+The resulting `ReviewResult` carries a `verdict` (`APPROVED`/`NEEDS_REVISION`/`REJECTED`) and a
+`recommendedAction` — `APPROVE`, `REJECT` (hard gate), `REGENERATE_SECTION` (every quality issue
+traces back to one upstream stage), or `REGENERATE_FULL` (issues span multiple stages, or none
+could be pinned down) — deterministically derived from the verdict and each issue's
+`suggestedStageToRevisit`. **When a reel is rejected or needs revision**, the job still completes
+normally; the full `ReviewResult` (score, per-category scores, issues, warnings, errors,
+reviewer notes) is persisted in `ReelJobReport.reviewResult()`, and `ReelJob.reviewVerdict()` /
+`recommendedAction()` surface the outcome at a glance without opening the report. Nothing
+downstream acts on a rejection automatically — regeneration and publishing are both future work
+(see "What's Deliberately Not Here").
+
+`ReviewerService.selectBest(List<ReviewResult>)` picks the best of several reviewed variants of
+the same topic (preferring a better verdict before a higher score) — a lightweight seam for a
+future multi-variant pipeline, not wired to anything today since nothing currently generates more
+than one variant per topic.
 
 ### Output Packaging
 
@@ -435,6 +489,95 @@ working-directory files into a structured package: writes `metadata.json` (the r
 the `OutputStorage` seam. Category keys are consistent across both this layer and the sync path's
 report (`"video"`, `"thumbnail"`, `"subtitles"`, `"metadata"`, `"report"`), so nothing downstream
 needs to know which stage produced which file.
+
+### Publishing
+
+`PublishingServiceImpl` (`services/PublishingServiceImpl.java`) is the last stage in the job
+lifecycle, running only when the Reviewer's verdict was `APPROVED` — a `REJECTED` or
+`NEEDS_REVISION` verdict skips it entirely (`ReelJob.publishingStatus() == "SKIPPED_NOT_APPROVED"`,
+a warning recorded, no job failure). Calling it against anything but an `APPROVED` `ReviewResult`
+throws a `PipelineStageException` — this precondition is enforced in code, not just documented.
+
+**What a publishing package contains.** `PublishingPackage` (`models/PublishingPackage.java`)
+bundles: the job id, the review verdict it was built from, file references (video, thumbnail,
+subtitles), default title/description/hashtags/tags (`PublishingMetadata`, built deterministically
+from the lesson and script by `publishing/PublishingMetadataGenerator.java` — title from the
+script's hook, falling back to the lesson's retention hook then topic title; description from the
+lesson objective plus beginner takeaway), and one `PlatformVariant` per registered platform
+adapter. It's written as `publishing-package.json` under the job's `publishing/` subdirectory,
+then stored through the same `OutputStorage` seam as every other output file
+(`outputFiles["publishing_package"]`).
+
+**Platform adapters.** `PlatformPublishAdapter` (`publishing/PlatformPublishAdapter.java`) is the
+seam: one implementation per platform, looked up by `Script.Platform`. `YouTubeShortsPublishAdapter`
+and `InstagramReelsPublishAdapter` are registered today, both extending
+`AbstractDryRunPlatformPublishAdapter` — no real YouTube/Instagram credentials exist in this
+project, so "publishing" means writing the exact payload a real upload call would send
+(`<platform>-payload.json`, containing title/description/hashtags/tags/category/file references)
+to a local file instead of calling a platform API. Each payload is also stored through
+`OutputStorage` (`outputFiles["publishing_youtube_shorts"]` / `["publishing_instagram_reels"]`).
+`PublishingResult.status` is `READY` (every adapter succeeded), `PARTIAL_FAILURE`, or `FAILED` —
+one platform's failure never blocks the others.
+
+**Adding a real adapter later** means writing a new `PlatformPublishAdapter` implementation that
+calls the real API instead of writing a payload file, and registering it as a `@Component` in
+place of (or alongside) the dry-run one — `PublishingServiceImpl`, `PublishingPackage`, and
+everything upstream of the adapter stay exactly the same, since both a dry-run and a real adapter
+return the same `PlatformPublishOutcome` shape.
+
+### Analytics / Feedback Loop
+
+`ReelAnalyticsServiceImpl` (`services/ReelAnalyticsServiceImpl.java`) closes the loop the rest of
+this document describes as forward-only: it captures what happened to every job — successful,
+rejected, needs-revision, or failed — and feeds the useful parts back into memory so the next
+topic-selection run can act on it. It's distinct from the pre-existing, still-dormant
+`AnalyticsService`/`PerformanceSnapshot` (real audience/platform metrics — no publishing
+integration posts anywhere real yet, see `analytics/analytics-spec.md`); this component works
+entirely from signals the pipeline already produces today.
+
+**What gets captured.** After every job (called from `ReelJobServiceImpl`, right after the job's
+own report is written, in both the success and failure paths — best-effort, so an analytics
+failure never turns a successfully recorded job into a failure), a `ReelOutcomeSnapshot`
+(`analytics/ReelOutcomeSnapshot.java`) is written to
+`<forgebrain.analytics.snapshots-directory>/<jobId>.json`: topic id/title, hook type and teaching
+style (from the job's `Script`/`ContentStrategy`), render duration, review verdict and score,
+publish status, output artifact references, warning count, fallback usage, and failure reason if
+any. Each snapshot is classified into one deterministic `Outcome` — `PUBLISHED`,
+`PUBLISH_FAILED`, `NEEDS_REVISION`, `REJECTED`, or `FAILED` — from `ReelJob.status()` and the
+review verdict, the same signal the aggregation and memory-feedback logic below groups by.
+
+**Aggregation.** `AnalyticsAggregator` (`analytics/AnalyticsAggregator.java`, a plain class like
+`QualityScorer`, not a Spring bean) rolls snapshots up by topic (`TopicPerformanceAggregate`:
+average review score, approval/rejection/revision/fallback rates, a chronological trend —
+`IMPROVING`/`DECLINING`/`STABLE`/`INSUFFICIENT_DATA` below two reviewed snapshots — and a
+`revisionPriorityScore`) and by hook type, teaching style, or platform target
+(`DimensionPerformanceAggregate`, the pipeline-outcome sibling of the still-dormant
+`StrategyPerformanceAggregate`, kept separate since the two would otherwise mean different things
+— internal review score vs. real engagement — under the same field names). All of it is
+mechanical arithmetic, no AI judgment, same philosophy as the Reviewer's scoring.
+
+**Memory feedback.** `AnalyticsMemoryFeedback` (`analytics/AnalyticsMemoryFeedback.java`, a pure
+function, unit-tested without any file I/O) turns one snapshot plus its topic's aggregate into an
+updated `MemoryState.TopicRecord`, written through the existing `MemoryService.updateTopicRecord`
+— no new memory storage mechanism, no changes to `TopicSelectorImpl`, which already reads
+`performanceScore`, `priority`, `avoidUntil`, and `status` directly. Concretely: a rejected reel
+forces `status = NEEDS_REVISIT`, `priority = HIGH`, and a cooldown (`avoidUntil`, configurable
+days); a topic whose aggregate `revisionPriorityScore` crosses
+`forgebrain.analytics.revision-priority-high-threshold` gets the same treatment even without a
+fresh rejection; a successfully published reel sets `status = POSTED` (the first code path in
+this repository that ever does) with `priority = LOW` for a strong, consistent performer or
+`NORMAL` otherwise; `performanceScore` is updated via a configurable exponential moving average
+so one bad reel doesn't erase a topic's history. **Curriculum truth is never touched** — title,
+difficulty, `timesUsed`, `lastUsedAt`, and `relatedTopics` are always carried forward from the
+existing record untouched; only the fields this component owns (`performanceScore`,
+`revisionCount`, `priority`, `avoidUntil`, `status`, `notes`) are written.
+
+**Reporting.** `ReelAnalyticsService.generateReport(windowStart, windowEnd)` aggregates every
+snapshot in the window into an `AnalyticsReport` — top-performing and weak topics, topics with a
+declining trend ("topic drift"), review and publish-readiness trends, hook/teaching-style/platform
+performance, and recommended-revisit topic ids (the same `revisionPriorityScore` threshold memory
+feedback uses) — written to `<forgebrain.analytics.reports-directory>` as both
+`<reportId>.json` and a short `<reportId>.md` summary.
 
 ### Cloud Storage Seam
 
@@ -510,10 +653,19 @@ rerun failing cleanly with its own report), or as a "one command" local run:
 
 ### Where This Fits
 
-`ReelJob.Status.COMPLETED` plus a populated `outputFiles` map is exactly the shape a future
-Publishing stage would need to pick up — a job id, a topic, and stored references to every
-artifact, already real `gs://` URIs when Cloud Storage is enabled (see "Cloud Storage Seam"
-above). Publishing itself is out of scope for this mission (see `TODO.md` 1.13/1.14).
+`ReelJob.Status.COMPLETED` with `reviewVerdict == "APPROVED"` and `publishingStatus == "READY"`
+is proof a reel went all the way from topic selection through a real, inspectable publishing
+package with dry-run platform payloads ready for a real upload worker to pick up — see
+"Publishing" above. What remains is real platform API calls (actual YouTube/Instagram credentials
+and upload logic behind the same `PlatformPublishAdapter` seam) and actually scheduling/triggering
+a post, both still deliberately out of scope (see `TODO.md` 1.13/1.14).
+
+Every job, regardless of outcome, also closes back onto the next `TopicSelectorImpl` run — see
+"Analytics / Feedback Loop" above. What remains there is exclusively **real audience data**: the
+`AnalyticsService`/`PerformanceSnapshot` pair is still fully dormant, waiting on a real publishing
+integration to post somewhere and a real platform metrics API (YouTube Analytics, Instagram
+Insights) to pull view/watch-time/engagement numbers from — everything analytics does today works
+from pipeline-internal signals alone, which is a real but partial substitute for that.
 
 ## What's Deliberately Not Here
 

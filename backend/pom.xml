@@ -52,6 +52,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- Small, dependency-free API jar (no reactor-core, no WebFlux) required at class-load
+             time by Spring's MultipartBodyBuilder, used by publishing.YouTubeRealPublishAdapter
+             to build a multipart video-upload request. Version managed by the Spring Boot BOM. -->
+        <dependency>
+            <groupId>org.reactivestreams</groupId>
+            <artifactId>reactive-streams</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>

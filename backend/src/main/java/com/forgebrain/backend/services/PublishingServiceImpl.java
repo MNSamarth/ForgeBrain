@@ -14,6 +14,7 @@ import com.forgebrain.backend.models.Script;
 import com.forgebrain.backend.models.VideoPackage;
 import com.forgebrain.backend.publishing.PlatformFormatter;
 import com.forgebrain.backend.publishing.PlatformPublishAdapter;
+import com.forgebrain.backend.publishing.PlatformPublishAdapterFactory;
 import com.forgebrain.backend.publishing.PublishingMetadataGenerator;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,10 +30,11 @@ import org.springframework.stereotype.Component;
 /**
  * Real {@link PublishingService} implementation. Enforces the approval precondition
  * (publishing-spec.md Section 4), builds a {@link PublishingPackage} with one {@link
- * PublishingPackage.PlatformVariant} per registered {@link PlatformPublishAdapter} (formatted by
- * a matching {@link PlatformFormatter} when one is registered for that platform), writes it to
- * disk, and hands it to every adapter — collecting each one's {@link PlatformPublishOutcome}
- * rather than letting one platform's failure block the others.
+ * PublishingPackage.PlatformVariant} per platform {@link PlatformPublishAdapterFactory} supports
+ * (formatted by a matching {@link PlatformFormatter} when one is registered for that platform),
+ * writes it to disk, and hands it to whichever adapter — dry-run or real, see {@link
+ * PlatformPublishAdapterFactory} — the factory resolves for each platform, collecting each one's
+ * {@link PlatformPublishOutcome} rather than letting one platform's failure block the others.
  */
 @Component
 public class PublishingServiceImpl implements PublishingService {
@@ -40,16 +42,15 @@ public class PublishingServiceImpl implements PublishingService {
     private final PublishingConfig config;
     private final ObjectMapper objectMapper;
     private final PublishingMetadataGenerator metadataGenerator;
-    private final Map<Script.Platform, PlatformPublishAdapter> adaptersByPlatform;
+    private final PlatformPublishAdapterFactory adapterFactory;
     private final Map<Script.Platform, PlatformFormatter> formattersByPlatform;
 
     public PublishingServiceImpl(PublishingConfig config, ObjectMapper objectMapper,
-            List<PlatformPublishAdapter> adapters, List<PlatformFormatter> formatters) {
+            PlatformPublishAdapterFactory adapterFactory, List<PlatformFormatter> formatters) {
         this.config = config;
         this.objectMapper = objectMapper;
         this.metadataGenerator = new PublishingMetadataGenerator(config);
-        this.adaptersByPlatform = adapters.stream()
-                .collect(Collectors.toMap(PlatformPublishAdapter::supportedPlatform, a -> a));
+        this.adapterFactory = adapterFactory;
         this.formattersByPlatform = formatters.stream()
                 .collect(Collectors.toMap(PlatformFormatter::supportedPlatform, f -> f));
     }
@@ -91,7 +92,7 @@ public class PublishingServiceImpl implements PublishingService {
         List<PlatformPublishOutcome> outcomes = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         for (PublishingPackage.PlatformVariant variant : variants) {
-            PlatformPublishAdapter adapter = adaptersByPlatform.get(variant.platform());
+            PlatformPublishAdapter adapter = adapterFactory.resolve(variant.platform());
             PlatformPublishOutcome outcome = adapter.publish(publishingPackage, variant.metadata(),
                     publishingDirectory);
             outcomes.add(outcome);
@@ -116,7 +117,7 @@ public class PublishingServiceImpl implements PublishingService {
     private List<PublishingPackage.PlatformVariant> buildPlatformVariants(Lesson lesson, Script script,
             PublishingMetadata defaultMetadata) {
         List<PublishingPackage.PlatformVariant> variants = new ArrayList<>();
-        for (Script.Platform platform : adaptersByPlatform.keySet()) {
+        for (Script.Platform platform : adapterFactory.supportedPlatforms()) {
             PlatformFormatter formatter = formattersByPlatform.get(platform);
             PublishingMetadata platformMetadata = formatter != null
                     ? formatter.format(lesson, script, defaultMetadata)

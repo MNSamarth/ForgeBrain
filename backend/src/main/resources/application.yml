@@ -105,6 +105,22 @@ forgebrain:
     default-language-code: "en-US"
     title-max-length: 100
     description-max-length: 2000
+    upload:
+      dry-run-only: true
+      youtube:
+        enabled: false
+        client-id: ""
+        client-secret: ""
+        refresh-token: ""
+        channel-id: ""
+        privacy-status: "private"
+        category-id: "27"
+      instagram:
+        enabled: false
+        access-token: ""
+        ig-user-id: ""
+        publish-poll-interval-seconds: 5
+        publish-poll-max-attempts: 10
   analytics:
     snapshots-directory: "data/analytics/snapshots"
     reports-directory: "data/analytics/reports"

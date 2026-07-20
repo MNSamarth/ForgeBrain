@@ -1,6 +1,7 @@
 package com.forgebrain.backend.services;
 
 import static com.forgebrain.backend.services.ReviewFixtures.lesson;
+import static com.forgebrain.backend.services.ReviewFixtures.platformUploadConfig;
 import static com.forgebrain.backend.services.ReviewFixtures.publishingConfig;
 import static com.forgebrain.backend.services.ReviewFixtures.reviewResult;
 import static com.forgebrain.backend.services.ReviewFixtures.script;
@@ -10,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.forgebrain.backend.config.PlatformUploadConfig;
 import com.forgebrain.backend.exceptions.PipelineStageException;
 import com.forgebrain.backend.models.ContentStrategy;
 import com.forgebrain.backend.models.Lesson;
@@ -22,19 +24,27 @@ import com.forgebrain.backend.models.Script;
 import com.forgebrain.backend.models.VideoPackage;
 import com.forgebrain.backend.publishing.InstagramReelsPublishAdapter;
 import com.forgebrain.backend.publishing.PlatformPublishAdapter;
+import com.forgebrain.backend.publishing.PlatformPublishAdapterFactory;
 import com.forgebrain.backend.publishing.YouTubeShortsPublishAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Unit tests for {@link PublishingServiceImpl} — per this mission's Part 7 ("publishing package
  * creation", "reviewer gate enforcement", "failed publish handling", "end-to-end approved reel
- * → publishing package path"). No Spring context, no real platform credentials.
+ * → publishing package path"). No Spring context, no real platform credentials. Every adapter
+ * passed to {@link #serviceWith} is wired as the dry-run candidate for its platform (real upload
+ * disabled) so these tests exercise {@code PublishingServiceImpl}'s own orchestration, not {@link
+ * PlatformPublishAdapterFactory}'s selection logic (covered separately by {@code
+ * PlatformPublishAdapterFactoryTest}) — except {@link #selectsTheRealAdapterWhenTheFactoryResolvesOneForAPlatform},
+ * which proves the service correctly uses whatever the factory resolves, real or dry-run.
  */
 class PublishingServiceImplTest {
 
@@ -52,7 +62,11 @@ class PublishingServiceImplTest {
     private PublishingServiceImpl serviceWith(List<PlatformPublishAdapter> adapters) throws IOException {
         Path video = tempDir.resolve("reel.mp4");
         Files.writeString(video, "video");
-        return new PublishingServiceImpl(publishingConfig(), objectMapper(), adapters, List.of());
+        Map<Script.Platform, PlatformPublishAdapter> byPlatform = adapters.stream()
+                .collect(Collectors.toMap(PlatformPublishAdapter::supportedPlatform, a -> a));
+        PlatformPublishAdapterFactory factory = new PlatformPublishAdapterFactory(platformUploadConfig(),
+                byPlatform, Map.of());
+        return new PublishingServiceImpl(publishingConfig(), objectMapper(), factory, List.of());
     }
 
     private VideoPackage videoPackageFixture() throws IOException {
@@ -163,6 +177,42 @@ class PublishingServiceImplTest {
 
         assertThat(result.status()).isEqualTo(PublishingResult.Status.FAILED);
         assertThat(result.errors()).hasSize(1);
+    }
+
+    @Test
+    void selectsTheRealAdapterWhenTheFactoryResolvesOneForAPlatform() throws IOException {
+        Path video = tempDir.resolve("reel.mp4");
+        Files.writeString(video, "video");
+        PlatformPublishAdapter fakeReal = new PlatformPublishAdapter() {
+            @Override
+            public Script.Platform supportedPlatform() {
+                return Script.Platform.YOUTUBE_SHORTS;
+            }
+
+            @Override
+            public PlatformPublishOutcome publish(PublishingPackage publishingPackage,
+                    PublishingMetadata platformMetadata, Path payloadDirectory) {
+                return new PlatformPublishOutcome(Script.Platform.YOUTUBE_SHORTS, false, true, "yt-video-id-123",
+                        "Uploaded for real.", Instant.now());
+            }
+        };
+        PlatformUploadConfig realEnabledConfig = new PlatformUploadConfig(false,
+                new PlatformUploadConfig.YouTube(true, "id", "secret", "token", "channel", "private", "27"),
+                new PlatformUploadConfig.Instagram(false, "", "", 0, 3));
+        PlatformPublishAdapterFactory factory = new PlatformPublishAdapterFactory(realEnabledConfig,
+                Map.of(Script.Platform.YOUTUBE_SHORTS, realAdapter()),
+                Map.of(Script.Platform.YOUTUBE_SHORTS, fakeReal));
+        PublishingServiceImpl service = new PublishingServiceImpl(publishingConfig(), objectMapper(), factory,
+                List.of());
+        ReviewResult approved = reviewResult(ReviewResult.Verdict.APPROVED);
+
+        PublishingResult result = service.publish("job-1", tempDir, approved, videoPackageFixture(), "sub.srt",
+                lesson, script);
+
+        assertThat(result.platformOutcomes()).hasSize(1);
+        PlatformPublishOutcome outcome = result.platformOutcomes().get(0);
+        assertThat(outcome.dryRun()).isFalse();
+        assertThat(outcome.payloadReference()).isEqualTo("yt-video-id-123");
     }
 
     private static PlatformPublishAdapter realAdapter() {

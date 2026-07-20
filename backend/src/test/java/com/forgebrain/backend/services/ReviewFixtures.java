@@ -1,5 +1,6 @@
 package com.forgebrain.backend.services;
 
+import com.forgebrain.backend.config.PlatformUploadConfig;
 import com.forgebrain.backend.config.PublishingConfig;
 import com.forgebrain.backend.config.ReviewerConfig;
 import com.forgebrain.backend.models.AssetManifest;
@@ -124,6 +125,13 @@ public final class ReviewFixtures {
 
     public static PublishingConfig publishingConfig() {
         return new PublishingConfig("1.0.0", List.of("#java", "#coding"), "Education", "en-US", 100, 2000);
+    }
+
+    /** A safe-by-default {@link PlatformUploadConfig}: real upload disabled everywhere. */
+    public static PlatformUploadConfig platformUploadConfig() {
+        return new PlatformUploadConfig(true,
+                new PlatformUploadConfig.YouTube(false, "", "", "", "", "private", "27"),
+                new PlatformUploadConfig.Instagram(false, "", "", 0, 3));
     }
 
     /** A minimal, valid {@link ReviewResult} with the given verdict — every list field empty. */

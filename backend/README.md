@@ -37,7 +37,7 @@ Two organizing principles are layered on top of each other, both requested expli
 | `rendering` | The rendering foundation (`RenderPlan`, `SceneRenderPlan`, `RenderAssetManifest`, `SubtitleTimeline`, `RenderPlanBuilder`, `AssetCollector`, `RenderValidator`) plus its real FFmpeg execution path in `rendering.ffmpeg` (`FfmpegRenderEngine`, `RenderCommandBuilder`, `SrtWriter`, `PlaceholderAssetResolver`). See "Rendering Foundation" and "Storyboard to MP4" below. |
 | `job` | The durable job layer on top of `ReelExportService`: `ReelJob`, `ReelJobRepository`, `OutputPackagingService`, `OutputStorage`, `ReelJobReport`, `ReelJobService`. See "Reel Job System" below. |
 | `analytics` | Two generations of analytics types side by side: `PerformanceSnapshot`/`StrategyPerformanceAggregate` (real audience/platform metrics — see `analytics/analytics-spec.md`, still not active, no publishing integration posts anywhere real yet) and `ReelOutcomeSnapshot`/`TopicPerformanceAggregate`/`DimensionPerformanceAggregate`/`AnalyticsReport` plus `AnalyticsAggregator`/`AnalyticsMemoryFeedback` (real pipeline-outcome analytics, active today — see "Analytics / Feedback Loop" below). |
-| `publishing` | `PublishingMetadataGenerator`, `PlatformFormatter` (per-platform metadata formatting), and the `PlatformPublishAdapter` seam (`AbstractDryRunPlatformPublishAdapter`, `YouTubeShortsPublishAdapter`, `InstagramReelsPublishAdapter`). See "Publishing" below. |
+| `publishing` | `PublishingMetadataGenerator`, `PlatformFormatter` (per-platform metadata formatting), and the `PlatformPublishAdapter` seam — dry-run (`AbstractDryRunPlatformPublishAdapter`, `YouTubeShortsPublishAdapter`, `InstagramReelsPublishAdapter`) and real (`YouTubeRealPublishAdapter`, `InstagramRealPublishAdapter`) implementations, chosen per platform by `PlatformPublishAdapterFactory`/`PlatformPublishAdapterBeanConfig`. See "Publishing" and "Real Platform Publishing" below. |
 
 ## Design Decisions Worth Knowing About
 
@@ -591,21 +591,86 @@ then stored through the same `OutputStorage` seam as every other output file
 (`outputFiles["publishing_package"]`).
 
 **Platform adapters.** `PlatformPublishAdapter` (`publishing/PlatformPublishAdapter.java`) is the
-seam: one implementation per platform, looked up by `Script.Platform`. `YouTubeShortsPublishAdapter`
-and `InstagramReelsPublishAdapter` are registered today, both extending
-`AbstractDryRunPlatformPublishAdapter` — no real YouTube/Instagram credentials exist in this
-project, so "publishing" means writing the exact payload a real upload call would send
-(`<platform>-payload.json`, containing title/description/hashtags/tags/category/file references)
-to a local file instead of calling a platform API. Each payload is also stored through
-`OutputStorage` (`outputFiles["publishing_youtube_shorts"]` / `["publishing_instagram_reels"]`).
+seam: one adapter per platform, resolved per publish call by `PlatformPublishAdapterFactory` (see
+"Real Platform Publishing" below) rather than looked up from a single fixed map — each platform
+has both a dry-run adapter (`YouTubeShortsPublishAdapter`/`InstagramReelsPublishAdapter`, writing
+`<platform>-payload.json` — the exact payload a real call would send — to a local file instead of
+calling a platform API) and a real one (`YouTubeRealPublishAdapter`/`InstagramRealPublishAdapter`),
+and the factory picks which one runs. Every dry-run payload is stored through `OutputStorage`
+(`outputFiles["publishing_youtube_shorts"]` / `["publishing_instagram_reels"]`).
 `PublishingResult.status` is `READY` (every adapter succeeded), `PARTIAL_FAILURE`, or `FAILED` —
-one platform's failure never blocks the others.
+one platform's failure never blocks the others, real or dry-run alike.
 
-**Adding a real adapter later** means writing a new `PlatformPublishAdapter` implementation that
-calls the real API instead of writing a payload file, and registering it as a `@Component` in
-place of (or alongside) the dry-run one — `PublishingServiceImpl`, `PublishingPackage`, and
-everything upstream of the adapter stay exactly the same, since both a dry-run and a real adapter
-return the same `PlatformPublishOutcome` shape.
+### Real Platform Publishing
+
+`YouTubeRealPublishAdapter` and `InstagramRealPublishAdapter` (`publishing/`) implement
+`PlatformPublishAdapter` directly (not `AbstractDryRunPlatformPublishAdapter`) and call the real
+YouTube Data API v3 and Instagram Graph API. Both are plain classes, not `@Component`s — like
+`YouTubeShortsPublishAdapter`/`InstagramReelsPublishAdapter`, they're constructed explicitly by
+`PlatformPublishAdapterBeanConfig` (mirroring `OutputStorageBeanConfig`'s local-vs-cloud storage
+wiring exactly), since with two adapters per platform Spring would otherwise have no unambiguous
+bean to autowire.
+
+**Selection.** `PlatformPublishAdapterFactory` (`publishing/PlatformPublishAdapterFactory.java`,
+plain and Spring-free, directly unit-tested) decides real vs. dry-run per platform, deterministically:
+the dry-run adapter runs unless `forgebrain.publishing.upload.dry-run-only` is `false` **and** that
+platform's own `enabled` flag is `true` **and** a real adapter is actually registered for it.
+`dry-run-only: true` is the default in every committed profile, so the dry-run path is exactly what
+runs — and what every test exercises — until someone explicitly opts a specific platform in.
+
+**Configuration** (`forgebrain.publishing.upload.*`, bound by `PlatformUploadConfig`) — structure
+and secret *references* only, no real value committed (see docs/CONFIGURATION.md Section 5):
+
+```yaml
+forgebrain:
+  publishing:
+    upload:
+      dry-run-only: true          # global override; false is required before any real upload happens
+      youtube:
+        enabled: false            # per-platform opt-in
+        client-id: ""             # OAuth 2.0 client id
+        client-secret: ""         # OAuth 2.0 client secret
+        refresh-token: ""         # long-lived refresh token, youtube.upload scope
+        channel-id: ""            # informational/traceability only
+        privacy-status: "private" # never defaults to "public"
+        category-id: "27"         # Education
+      instagram:
+        enabled: false
+        access-token: ""          # long-lived Graph API token, instagram_content_publish scope
+        ig-user-id: ""
+        publish-poll-interval-seconds: 5
+        publish-poll-max-attempts: 10
+```
+
+**YouTube upload flow.** Exchanges `refresh-token` for a short-lived access token
+(`https://oauth2.googleapis.com/token`), then `POST`s a multipart request (JSON metadata part +
+the reel's `.mp4`) to the Data API's `videos.insert` upload endpoint — the minimal upload flow
+appropriate for a short video, not the chunked/resumable protocol meant for multi-gigabyte files.
+On success, `PlatformPublishOutcome.payloadReference()` holds the real YouTube video id.
+
+**Instagram upload flow.** The Graph API's documented three-step Reels flow: create a media
+container from a video URL, poll it until Instagram finishes processing, then publish the
+container. **The Graph API requires a URL it can fetch itself** — if `videoFileUri` isn't an
+`http(s)://` URL (i.e. local storage rather than Cloud Storage is in use), the adapter reports a
+clear failed outcome instead of attempting a call that could never succeed, naming exactly what's
+missing. On success, `payloadReference()` holds the real published media id.
+
+**Neither real adapter has been exercised against its live API** — this project has no real
+YouTube or Instagram credentials. Both are a well-reasoned first cut against each platform's
+documented API shape, unit-tested end-to-end against a mocked HTTP layer
+(`MockRestServiceServer`), not a verified integration.
+
+**Missing credentials.** A platform enabled (`enabled: true`, `dry-run-only: false`) without its
+required credentials never throws or crashes the pipeline — the real adapter returns a failed
+`PlatformPublishOutcome` naming exactly which field is blank (e.g. `"missing configuration:
+client-id, refresh-token"`), which flows into `PublishingResult.errors()` and the job's warnings
+exactly like any other adapter failure. A platform that's simply not enabled is not an error at
+all; it silently uses the dry-run adapter, same as every committed profile today.
+
+**What's unchanged:** the review-gate precondition, `PublishingPackage` generation, and the job
+orchestration flow in `ReelJobServiceImpl` — `PublishingServiceImpl` still resolves one adapter per
+platform and collects outcomes the exact same way; it has no idea whether the adapter it just
+called was real or dry-run.
 
 ### Analytics / Feedback Loop
 
@@ -737,10 +802,13 @@ rerun failing cleanly with its own report), or as a "one command" local run:
 
 `ReelJob.Status.COMPLETED` with `reviewVerdict == "APPROVED"` and `publishingStatus == "READY"`
 is proof a reel went all the way from topic selection through a real, inspectable publishing
-package with dry-run platform payloads ready for a real upload worker to pick up — see
-"Publishing" above. What remains is real platform API calls (actual YouTube/Instagram credentials
-and upload logic behind the same `PlatformPublishAdapter` seam) and actually scheduling/triggering
-a post, both still deliberately out of scope (see `TODO.md` 1.13/1.14).
+package — with real YouTube/Instagram upload adapters now behind the same `PlatformPublishAdapter`
+seam (see "Real Platform Publishing" above), used the moment `forgebrain.publishing.upload.*` is
+configured with real credentials and switched on. What remains is exclusively **obtaining those
+real credentials** (OAuth client/refresh token for YouTube, a long-lived Graph API token for
+Instagram) and exercising both adapters against a live account at least once — this sandbox has
+neither — plus actually scheduling/triggering a post on a timer, still deliberately out of scope
+(see `TODO.md` 1.13/1.14).
 
 Every job, regardless of outcome, also closes back onto the next `TopicSelectorImpl` run — see
 "Analytics / Feedback Loop" above. What remains there is exclusively **real audience data**: the

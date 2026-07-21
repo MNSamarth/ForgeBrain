@@ -104,7 +104,7 @@ class ReelExportServiceImplTest {
         assertThat(report.finalStatus()).isEqualTo("SUCCESS");
         assertThat(report.errors()).isEmpty();
         assertThat(report.stageResults()).extracting(StageExecutionSummary::stageName)
-                .containsExactly("AI_PIPELINE", "VOICE", "SUBTITLES", "ASSETS", "RENDER_PLAN",
+                .containsExactly("AI_PIPELINE", "VISUAL_DIRECTOR", "VOICE", "SUBTITLES", "ASSETS", "RENDER_PLAN",
                         "RENDER_VALIDATION", "RENDER_EXECUTION");
         assertThat(report.stageResults()).allMatch(StageExecutionSummary::success);
         // No real narration file exists in this test environment, so the documented silent

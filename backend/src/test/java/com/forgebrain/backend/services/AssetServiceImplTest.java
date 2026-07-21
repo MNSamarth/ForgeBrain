@@ -14,6 +14,7 @@ import com.forgebrain.backend.models.Lesson;
 import com.forgebrain.backend.models.Script;
 import com.forgebrain.backend.models.Storyboard;
 import com.forgebrain.backend.models.Topic;
+import com.forgebrain.backend.models.VisualPlan;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,6 +28,7 @@ class AssetServiceImplTest {
     Path tempDir;
 
     private Storyboard storyboard;
+    private Script script;
 
     @BeforeEach
     void setUp() {
@@ -43,7 +45,7 @@ class AssetServiceImplTest {
                 .research("java-for-loop", topic, Topic.Difficulty.BEGINNER, 40, null);
         Lesson lesson = new LessonServiceImpl().generateLesson(research, null, null);
         ContentStrategy strategy = new ContentDirectorServiceImpl().decideStrategy(lesson, null);
-        Script script = new ScriptServiceImpl().generateScript(lesson, strategy, Script.Platform.GENERIC_VERTICAL_SHORT);
+        script = new ScriptServiceImpl().generateScript(lesson, strategy, Script.Platform.GENERIC_VERTICAL_SHORT);
         storyboard = new StoryboardServiceImpl().generateStoryboard(script, strategy);
     }
 
@@ -97,5 +99,28 @@ class AssetServiceImplTest {
         assertThat(manifest.backgroundMusic().license()).isEqualTo("local-catalog");
         assertThat(manifest.watermark().assetUri()).isEqualTo(realWatermark.toAbsolutePath().toString());
         assertThat(manifest.assetManifestVersion()).contains("catalog");
+    }
+
+    @Test
+    void withoutAVisualPlanEveryVisualPromptBriefIsNull() {
+        AssetManifest manifest = service(tempDir.resolve("empty-assets")).resolveAssets(storyboard);
+
+        assertThat(manifest.sceneAssets()).allMatch(sceneAsset -> sceneAsset.visualPromptBrief() == null);
+    }
+
+    @Test
+    void withAVisualPlanCodeAndImageryScenesGetAStructuredVisualPromptBrief() {
+        VisualPlan visualPlan = new VisualDirectorServiceImpl().generateVisualPlan(script, storyboard);
+
+        AssetManifest manifest = service(tempDir.resolve("empty-assets")).resolveAssets(storyboard, visualPlan);
+
+        // The heuristic Visual Director gives the HOOK scene (FULL_BLEED) an image prompt.
+        AssetManifest.SceneAsset hookAsset = manifest.sceneAssets().stream()
+                .filter(sceneAsset -> sceneAsset.sceneId().equals(storyboard.scenes().get(0).sceneId()))
+                .findFirst().orElseThrow();
+        assertThat(hookAsset.visualPromptBrief()).contains("illustration:");
+
+        long codeSceneCount = storyboard.scenes().stream().filter(s -> s.codeBlock() != null).count();
+        assertThat(manifest.sceneAssets().size()).isGreaterThanOrEqualTo((int) codeSceneCount);
     }
 }

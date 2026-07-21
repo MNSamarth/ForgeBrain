@@ -22,6 +22,11 @@ import java.util.List;
  * @param globalAssetRefs reel-wide assets not tied to any specific scene (e.g. a watermark) —
  *                        distinct from each scene's own {@code assetRefs}
  * @param transitions     the transition between each consecutive pair of scenes
+ * @param thumbnailBrief  what the thumbnail should communicate, from the Visual Director's {@link
+ *                        com.forgebrain.backend.models.VisualPlan#thumbnailBrief()} — {@code null}
+ *                        when no {@link com.forgebrain.backend.models.VisualPlan} was available,
+ *                        in which case {@link com.forgebrain.backend.rendering.ffmpeg.ThumbnailCommandBuilder}
+ *                        falls back to deriving a headline from the hook scene's own text
  */
 public record RenderPlan(
         String topicId,
@@ -39,7 +44,8 @@ public record RenderPlan(
         Storyboard.AspectRatio aspectRatio,
         String renderPlanVersion,
         Instant generatedAt,
-        String basedOnStoryboardVersion
+        String basedOnStoryboardVersion,
+        String thumbnailBrief
 ) {
 
     public record VideoDimensions(int width, int height) {

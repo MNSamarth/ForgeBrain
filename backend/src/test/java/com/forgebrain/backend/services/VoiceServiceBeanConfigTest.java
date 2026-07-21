@@ -27,7 +27,7 @@ class VoiceServiceBeanConfigTest {
     @Test
     void resolvesToTheSilentFallbackWhenTextToSpeechIsDisabled() {
         VoiceServiceBeanConfig beanConfig = new VoiceServiceBeanConfig();
-        TextToSpeechConfig disabled = new TextToSpeechConfig(false, "en-US", "", 1.0, 0.0);
+        TextToSpeechConfig disabled = new TextToSpeechConfig(false, false, "en-US", "", 1.0, 0.0);
 
         VoiceService resolved = beanConfig.voiceService(disabled, renderingConfig(),
                 new FfmpegProcessRunner(renderingConfig()));
@@ -38,7 +38,7 @@ class VoiceServiceBeanConfigTest {
     @Test
     void resolvesToTheRealGoogleCloudImplementationWhenEnabled() {
         VoiceServiceBeanConfig beanConfig = new VoiceServiceBeanConfig();
-        TextToSpeechConfig enabled = new TextToSpeechConfig(true, "en-US", "en-US-Neural2-D", 1.0, 0.0);
+        TextToSpeechConfig enabled = new TextToSpeechConfig(true, false, "en-US", "en-US-Neural2-D", 1.0, 0.0);
 
         VoiceService resolved = beanConfig.voiceService(enabled, renderingConfig(),
                 new FfmpegProcessRunner(renderingConfig()));

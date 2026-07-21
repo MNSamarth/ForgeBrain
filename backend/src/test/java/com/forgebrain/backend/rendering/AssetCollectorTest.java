@@ -124,6 +124,6 @@ class AssetCollectorTest {
                 new RenderPlan.FontSet("Inter-Bold", "Inter-Regular", "JetBrainsMono-Regular"), subtitles,
                 new RenderPlan.AudioPlan("voiceover/topic", "music/lofi-focus", -18.0), List.of(), List.of(),
                 Storyboard.RenderStyle.DARK_MODE_IDE, Storyboard.AspectRatio.RATIO_9_16, "1.0.0", Instant.now(),
-                "1.0.0-heuristic");
+                "1.0.0-heuristic", null);
     }
 }

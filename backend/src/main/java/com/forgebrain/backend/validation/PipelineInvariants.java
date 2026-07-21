@@ -26,7 +26,7 @@ public final class PipelineInvariants {
 
     /** The order every {@link StageExecutionSummary#stageName()} is expected to appear in. */
     private static final List<String> CANONICAL_STAGE_ORDER = List.of(
-            "AI_PIPELINE", "VOICE", "SUBTITLES", "ASSETS", "RENDER_PLAN", "RENDER_VALIDATION",
+            "AI_PIPELINE", "VISUAL_DIRECTOR", "VOICE", "SUBTITLES", "ASSETS", "RENDER_PLAN", "RENDER_VALIDATION",
             "RENDER_EXECUTION", "REVIEWING", "PUBLISHING");
 
     private static final List<String> REQUIRED_ARTIFACT_KEYS = List.of(

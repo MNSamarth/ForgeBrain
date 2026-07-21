@@ -9,6 +9,7 @@ import com.forgebrain.backend.models.AssetManifest.SceneAsset;
 import com.forgebrain.backend.models.AssetManifest.Watermark;
 import com.forgebrain.backend.models.Scene;
 import com.forgebrain.backend.models.Storyboard;
+import com.forgebrain.backend.models.VisualPlan;
 import com.forgebrain.backend.shared.ConfidenceLevel;
 import com.forgebrain.backend.shared.ConfidenceNotes;
 import java.nio.file.Files;
@@ -17,6 +18,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
@@ -47,6 +49,11 @@ public class AssetServiceImpl implements AssetService {
 
     @Override
     public AssetManifest resolveAssets(Storyboard storyboard) {
+        return resolveAssets(storyboard, null);
+    }
+
+    @Override
+    public AssetManifest resolveAssets(Storyboard storyboard, VisualPlan visualPlan) {
         Path assetsDirectory = Path.of(renderingConfig.assetsDirectory());
         List<String> flagged = new ArrayList<>();
         boolean[] usedRealAsset = {false};
@@ -54,7 +61,7 @@ public class AssetServiceImpl implements AssetService {
         ResolvedTheme theme = resolveTheme(storyboard.renderStyle(), assetsDirectory, usedRealAsset);
         BackgroundMusic music = resolveMusic(storyboard.renderStyle(), assetsDirectory, usedRealAsset);
         Watermark watermark = resolveWatermark(assetsDirectory, usedRealAsset);
-        List<SceneAsset> sceneAssets = resolveSceneAssets(storyboard, theme);
+        List<SceneAsset> sceneAssets = resolveSceneAssets(storyboard, theme, visualPlan);
 
         if (!usedRealAsset[0]) {
             flagged.add("No real asset catalog found under '" + assetsDirectory + "'; every reference below is a"
@@ -112,15 +119,53 @@ public class AssetServiceImpl implements AssetService {
         return new Watermark("watermark/forgebrain-default", Watermark.Position.BOTTOM_RIGHT);
     }
 
-    private List<SceneAsset> resolveSceneAssets(Storyboard storyboard, ResolvedTheme theme) {
+    private List<SceneAsset> resolveSceneAssets(Storyboard storyboard, ResolvedTheme theme, VisualPlan visualPlan) {
+        Map<String, VisualPlan.VisualScenePlan> visualScenesById = visualPlan == null ? Map.of()
+                : visualPlan.scenes().stream()
+                        .collect(java.util.stream.Collectors.toMap(VisualPlan.VisualScenePlan::sceneId, sp -> sp));
+
         List<SceneAsset> sceneAssets = new ArrayList<>();
         for (Scene scene : storyboard.scenes()) {
+            VisualPlan.VisualScenePlan visualScenePlan = visualScenesById.get(scene.sceneId());
+            String visualPromptBrief = visualPromptBriefFor(visualScenePlan);
+
             if (scene.codeBlock() != null) {
                 sceneAssets.add(new SceneAsset(scene.sceneId(),
-                        List.of("code-font:" + theme.fontCode(), "code-screenshot:" + scene.sceneId())));
+                        List.of("code-font:" + theme.fontCode(), "code-screenshot:" + scene.sceneId()),
+                        visualPromptBrief));
+            } else if (visualPromptBrief != null) {
+                sceneAssets.add(new SceneAsset(scene.sceneId(), List.of(), visualPromptBrief));
             }
         }
         return sceneAssets;
+    }
+
+    /**
+     * A single, human-readable brief combining the Visual Director's illustration prompt and
+     * diagram type for this scene — {@code null} when no {@link VisualPlan} was supplied or the
+     * scene has neither (mission Part 4: a lightweight, structured-enough brief, not a full
+     * image-generation subsystem).
+     */
+    private String visualPromptBriefFor(VisualPlan.VisualScenePlan visualScenePlan) {
+        if (visualScenePlan == null) {
+            return null;
+        }
+        boolean hasImagePrompt = visualScenePlan.imagePrompt() != null && !visualScenePlan.imagePrompt().isBlank();
+        boolean hasDiagramType = visualScenePlan.diagramType() != null && !visualScenePlan.diagramType().isBlank();
+        if (!hasImagePrompt && !hasDiagramType) {
+            return null;
+        }
+        StringBuilder brief = new StringBuilder();
+        if (hasImagePrompt) {
+            brief.append("illustration: ").append(visualScenePlan.imagePrompt());
+        }
+        if (hasDiagramType) {
+            if (brief.length() > 0) {
+                brief.append(" | ");
+            }
+            brief.append("diagram: ").append(visualScenePlan.diagramType());
+        }
+        return brief.toString();
     }
 
     private String resolveOrPlaceholder(Path assetsDirectory, String relativePath, String placeholder,

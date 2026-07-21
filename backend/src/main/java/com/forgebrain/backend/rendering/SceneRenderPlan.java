@@ -40,6 +40,14 @@ public record SceneRenderPlan(
 ) {
 
     /**
+     * The {@link BackgroundSpec#styleRef()} value {@link RenderPlanBuilder} writes when the
+     * Visual Director marked a scene's {@code composition} as {@code FULL_BLEED} —
+     * {@code RenderCommandBuilder} looks for exactly this marker to pick its full-bleed visual
+     * card treatment instead of the default small accent card behind the heading.
+     */
+    public static final String FULL_BLEED_STYLE_REF = "full-bleed-visual";
+
+    /**
      * @param styleRef    abstract background treatment name, derived from the reel's {@code
      *                    RenderStyle} (e.g. {@code "dark-mode-ide"}) — not a resolved color/asset
      * @param description carried from {@link Scene#visualDescription()}, for a human (or a

@@ -36,6 +36,10 @@ forgebrain:
     script-temperature: 0.4
     script-max-output-tokens: 2048
     script-response-mime-type: "application/json"
+    visual-director-model: "gemini-2.5-pro"
+    visual-director-temperature: 0.4
+    visual-director-max-output-tokens: 4096
+    visual-director-response-mime-type: "application/json"
   ai-gateway:
     max-retries: 2
     initial-backoff-millis: 250
@@ -84,6 +88,7 @@ forgebrain:
     assets-directory: "../assets"
   text-to-speech:
     enabled: false
+    strict: false
     language-code: "en-US"
     voice-name: "en-US-Neural2-D"
     speaking-rate: 1.0

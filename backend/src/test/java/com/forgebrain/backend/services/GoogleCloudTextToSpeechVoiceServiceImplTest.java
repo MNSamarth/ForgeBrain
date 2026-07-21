@@ -1,6 +1,7 @@
 package com.forgebrain.backend.services;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -63,7 +64,11 @@ class GoogleCloudTextToSpeechVoiceServiceImplTest {
     }
 
     private static TextToSpeechConfig config() {
-        return new TextToSpeechConfig(true, "en-US", "en-US-Neural2-D", 1.0, 0.0);
+        return new TextToSpeechConfig(true, false, "en-US", "en-US-Neural2-D", 1.0, 0.0);
+    }
+
+    private static TextToSpeechConfig strictConfig() {
+        return new TextToSpeechConfig(true, true, "en-US", "en-US-Neural2-D", 1.0, 0.0);
     }
 
     private static VoiceResult.VoiceProfile voiceProfile() {
@@ -96,5 +101,35 @@ class GoogleCloudTextToSpeechVoiceServiceImplTest {
 
         assertThat(result.topicId()).isEqualTo("java-for-loop");
         assertThat(result.scenes()).hasSize(storyboard.scenes().size());
+    }
+
+    // ----------------------------------------------------------------------- strict cloud mode
+
+    @Test
+    void throwsInsteadOfFallingBackWhenStrictAndSynthesisFails() {
+        VoiceService fallbackThatShouldNeverBeCalled = (sb, profile) -> {
+            throw new AssertionError("strict mode must not consult the fallback VoiceService");
+        };
+        GoogleCloudTextToSpeechVoiceServiceImpl service = new GoogleCloudTextToSpeechVoiceServiceImpl(strictConfig(),
+                renderingConfig, new FfmpegProcessRunner(renderingConfig), fallbackThatShouldNeverBeCalled);
+
+        assertThatThrownBy(() -> service.generateVoice(storyboard, voiceProfile()))
+                .isInstanceOf(com.forgebrain.backend.exceptions.RenderExecutionException.class)
+                .hasMessageContaining("forgebrain.text-to-speech.strict is true");
+    }
+
+    @Test
+    void nonStrictModeStillFallsBackAsTheIntentionalLocalDevBehavior() {
+        VoiceResult sentinel = new VoiceResult("java-for-loop", "The For Loop", voiceProfile(), List.of(), 10, 10,
+                0, false, 2.0, VoiceResult.AudioFormat.AUDIO_WAV, 44100,
+                new ConfidenceNotes(ConfidenceLevel.LOW, List.of("stub"), List.of()), "stub-version", Instant.now(),
+                "1.0.0");
+        VoiceService stubFallback = (sb, profile) -> sentinel;
+        GoogleCloudTextToSpeechVoiceServiceImpl service = new GoogleCloudTextToSpeechVoiceServiceImpl(config(),
+                renderingConfig, new FfmpegProcessRunner(renderingConfig), stubFallback);
+
+        VoiceResult result = service.generateVoice(storyboard, voiceProfile());
+
+        assertThat(result).isSameAs(sentinel);
     }
 }

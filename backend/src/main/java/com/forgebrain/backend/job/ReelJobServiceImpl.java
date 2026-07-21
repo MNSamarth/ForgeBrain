@@ -10,6 +10,7 @@ import com.forgebrain.backend.models.ReviewResult;
 import com.forgebrain.backend.models.Script;
 import com.forgebrain.backend.models.SubtitleResult;
 import com.forgebrain.backend.models.VideoPackage;
+import com.forgebrain.backend.models.VisualPlan;
 import com.forgebrain.backend.models.VoiceResult;
 import com.forgebrain.backend.pipeline.PipelineOrchestrator;
 import com.forgebrain.backend.pipeline.PipelineResult;
@@ -26,6 +27,7 @@ import com.forgebrain.backend.services.PublishingService;
 import com.forgebrain.backend.services.ReelAnalyticsService;
 import com.forgebrain.backend.services.ReviewerService;
 import com.forgebrain.backend.services.SubtitleService;
+import com.forgebrain.backend.services.VisualDirectorService;
 import com.forgebrain.backend.services.VoiceService;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -58,6 +60,7 @@ public class ReelJobServiceImpl implements ReelJobService {
             new VoiceResult.VoiceProfile("en-US-Neural2-C", "en-US", 1.0, 0.0);
 
     private final PipelineOrchestrator pipelineOrchestrator;
+    private final VisualDirectorService visualDirectorService;
     private final VoiceService voiceService;
     private final SubtitleService subtitleService;
     private final AssetService assetService;
@@ -72,13 +75,15 @@ public class ReelJobServiceImpl implements ReelJobService {
     private final ReelJobReportWriter reportWriter;
     private final ReelJobRepository jobRepository;
 
-    public ReelJobServiceImpl(PipelineOrchestrator pipelineOrchestrator, VoiceService voiceService,
+    public ReelJobServiceImpl(PipelineOrchestrator pipelineOrchestrator,
+            VisualDirectorService visualDirectorService, VoiceService voiceService,
             SubtitleService subtitleService, AssetService assetService, RenderPlanBuilder renderPlanBuilder,
             RenderValidator renderValidator, RenderEngine renderEngine, RenderingConfig renderingConfig,
             ReviewerService reviewerService, PublishingService publishingService,
             ReelAnalyticsService reelAnalyticsService, OutputPackagingService outputPackagingService,
             ReelJobReportWriter reportWriter, ReelJobRepository jobRepository) {
         this.pipelineOrchestrator = pipelineOrchestrator;
+        this.visualDirectorService = visualDirectorService;
         this.voiceService = voiceService;
         this.subtitleService = subtitleService;
         this.assetService = assetService;
@@ -115,6 +120,16 @@ public class ReelJobServiceImpl implements ReelJobService {
                     r -> "topicId=" + r.topicId() + ", storyboard_scenes=" + r.storyboard().sceneCount());
             job = jobRepository.update(job.withTopic(pipelineResult.topicId(), pipelineResult.topicTitle()));
 
+            VisualPlan visualPlan = runStage("VISUAL_DIRECTOR", stageResults,
+                    () -> visualDirectorService.generateVisualPlan(pipelineResult.script(),
+                            pipelineResult.storyboard()),
+                    r -> "visual_plan_version=" + r.visualPlanVersion() + ", scenes=" + r.scenes().size());
+            if (visualPlan.visualPlanVersion().contains("heuristic")) {
+                job = jobRepository.update(job
+                        .withWarning("VISUAL_DIRECTOR: heuristic visual plan used — AI Gateway was unavailable.")
+                        .withFallbackStage("VISUAL_DIRECTOR"));
+            }
+
             VoiceResult voiceResult = runStage("VOICE", stageResults,
                     () -> voiceService.generateVoice(pipelineResult.storyboard(), DEFAULT_VOICE_PROFILE),
                     r -> "voice_version=" + r.voiceVersion());
@@ -129,7 +144,7 @@ public class ReelJobServiceImpl implements ReelJobService {
                     r -> "format=" + r.format() + ", scenes=" + r.scenes().size());
 
             AssetManifest assetManifest = runStage("ASSETS", stageResults,
-                    () -> assetService.resolveAssets(pipelineResult.storyboard()),
+                    () -> assetService.resolveAssets(pipelineResult.storyboard(), visualPlan),
                     r -> "asset_manifest_version=" + r.assetManifestVersion());
             if (assetManifest.assetManifestVersion().contains("placeholder")) {
                 job = jobRepository.update(job
@@ -138,7 +153,8 @@ public class ReelJobServiceImpl implements ReelJobService {
             }
 
             RenderPlan renderPlan = runStage("RENDER_PLAN", stageResults,
-                    () -> renderPlanBuilder.build(pipelineResult.storyboard(), voiceResult, subtitleResult, assetManifest),
+                    () -> renderPlanBuilder.build(pipelineResult.storyboard(), voiceResult, subtitleResult,
+                            assetManifest, visualPlan),
                     r -> "scenes=" + r.scenes().size() + ", total_duration=" + r.totalDurationSeconds() + "s");
 
             job = jobRepository.update(job.validating());

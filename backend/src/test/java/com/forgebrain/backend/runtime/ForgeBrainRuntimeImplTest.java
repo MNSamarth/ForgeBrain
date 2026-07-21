@@ -69,7 +69,7 @@ class ForgeBrainRuntimeImplTest {
     private static VertexAiConfig vertexAiConfig() {
         return new VertexAiConfig("demo-project", "us-central1", "flash-research", "pro-lesson", "pro-script",
                 "flash-director", 0.4, 2048, "application/json", 0.4, 2048, "application/json", 0.4, 2048,
-                "application/json");
+                "application/json", "gemini-2.5-pro", 0.4, 2048, "application/json");
     }
 
     private static CloudStorageConfig cloudStorageConfig() {

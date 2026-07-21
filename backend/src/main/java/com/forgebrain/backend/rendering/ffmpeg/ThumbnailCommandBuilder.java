@@ -13,6 +13,11 @@ import java.util.List;
  * reel's hook line, bold and outlined, over a {@code RenderStyle}-driven background with a dark
  * accent band behind the text for contrast — entirely independent of the rendered video, so it
  * never depends on which frame happens to land at a given timestamp.
+ *
+ * <p>Prefers {@link RenderPlan#thumbnailBrief()} — the Visual Director's intentional "what should
+ * this thumbnail communicate" direction — as the headline when one is available; falls back to
+ * the hook scene's own on-screen text (and then the topic title) when it isn't, exactly as before
+ * the Visual Director stage existed.
  */
 final class ThumbnailCommandBuilder {
 
@@ -93,6 +98,9 @@ final class ThumbnailCommandBuilder {
     }
 
     private static String headlineFor(RenderPlan renderPlan) {
+        if (renderPlan.thumbnailBrief() != null && !renderPlan.thumbnailBrief().isBlank()) {
+            return renderPlan.thumbnailBrief();
+        }
         for (SceneRenderPlan scene : renderPlan.scenes()) {
             if (scene.sceneType() == Scene.SceneType.HOOK && !scene.textLayers().isEmpty()) {
                 return scene.textLayers().get(0).text();

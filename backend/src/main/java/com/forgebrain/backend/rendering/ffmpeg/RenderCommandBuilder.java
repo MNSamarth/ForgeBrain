@@ -28,6 +28,12 @@ import java.util.Locale;
  * (e.g. "JVM" / "Bytecode" / "Machine Code") instead of the same items stacked as static
  * paragraphs; and word-highlighted {@code .ass} subtitles ({@link AssSubtitleWriter}) instead of
  * plain {@code .srt}. See backend/README.md's "Creator-quality rendering layer" section.
+ *
+ * <p>When a scene's {@link SceneRenderPlan.BackgroundSpec#styleRef()} is {@link
+ * SceneRenderPlan#FULL_BLEED_STYLE_REF} — written by {@link com.forgebrain.backend.rendering.RenderPlanBuilder}
+ * when the Visual Director marked that scene's composition as {@code FULL_BLEED} — the scene
+ * renders as a full-bleed visual card (a near-full-screen accent tint with a bold centered
+ * headline) instead of the default small accent card behind the heading.
  */
 final class RenderCommandBuilder {
 
@@ -36,6 +42,8 @@ final class RenderCommandBuilder {
     private static final int KICKER_FONT_SIZE = 28;
     private static final int ACCENT_CARD_VERTICAL_PAD = 60;
     private static final int ACCENT_CARD_MARGIN_X = 50;
+    private static final int FULL_BLEED_MARGIN = 24;
+    private static final int FULL_BLEED_STRIPE_HEIGHT = 8;
 
     private RenderCommandBuilder() {
     }
@@ -120,6 +128,8 @@ final class RenderCommandBuilder {
             }
             filters.addAll(CodeBlockRenderer.buildFilters(scene.codeLayer(), scene.startTime(), scene.endTime(),
                     dimensions));
+        } else if (SceneRenderPlan.FULL_BLEED_STYLE_REF.equals(scene.background().styleRef())) {
+            filters.addAll(fullBleedFilters(scene, template, dimensions, textColor));
         } else if (scene.textLayers().size() > 1) {
             if (!template.kicker().isEmpty()) {
                 filters.add(kickerFilter(template, scene, dimensions));
@@ -152,6 +162,33 @@ final class RenderCommandBuilder {
         }
         filters.add(TextAnimator.drawText(text, textColor, template.headingFontSize(), textY, scene.startTime(),
                 scene.endTime()));
+        return filters;
+    }
+
+    /**
+     * A near-full-screen accent tint with a top stripe and a bold centered headline — the
+     * Visual Director's {@code FULL_BLEED} composition, distinct from the default small accent
+     * card behind the heading (mission Part 3: "at least one scene type can render as ... a
+     * full-bleed visual card").
+     */
+    private static List<String> fullBleedFilters(SceneRenderPlan scene, SceneVisualTemplate template,
+            RenderPlan.VideoDimensions dimensions, String textColor) {
+        List<String> filters = new ArrayList<>();
+        String enable = enableClause(scene.startTime(), scene.endTime());
+        int cardWidth = dimensions.width() - 2 * FULL_BLEED_MARGIN;
+        int cardHeight = dimensions.height() - 2 * FULL_BLEED_MARGIN;
+
+        filters.add("drawbox=x=" + FULL_BLEED_MARGIN + ":y=" + FULL_BLEED_MARGIN + ":w=" + cardWidth
+                + ":h=" + cardHeight + ":color=" + template.accentCardColor() + ":t=fill:enable=" + enable);
+        filters.add("drawbox=x=" + FULL_BLEED_MARGIN + ":y=" + FULL_BLEED_MARGIN + ":w=" + cardWidth
+                + ":h=" + FULL_BLEED_STRIPE_HEIGHT + ":color=" + template.accentColorHex() + ":t=fill:enable="
+                + enable);
+
+        if (!scene.textLayers().isEmpty()) {
+            int textY = dimensions.height() / 2 - template.headingFontSize() / 2;
+            filters.add(TextAnimator.drawText(scene.textLayers().get(0).text(), textColor,
+                    template.headingFontSize(), textY, scene.startTime(), scene.endTime()));
+        }
         return filters;
     }
 

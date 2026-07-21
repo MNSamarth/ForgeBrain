@@ -25,7 +25,15 @@ class ThumbnailCommandBuilderTest {
                 List.of(hookScene), new RenderPlan.FontSet("h", "b", "c"), subtitles,
                 new RenderPlan.AudioPlan("voiceover/topic", "music/lofi-focus", -18.0), List.of(), List.of(),
                 Storyboard.RenderStyle.DARK_MODE_IDE, Storyboard.AspectRatio.RATIO_9_16, "1.0.0", Instant.now(),
-                "1.0.0");
+                "1.0.0", null);
+    }
+
+    private RenderPlan planWithHookAndThumbnailBrief(String hookText, String thumbnailBrief) {
+        RenderPlan plan = planWithHook(hookText);
+        return new RenderPlan(plan.topicId(), plan.topicTitle(), plan.dimensions(), plan.fps(),
+                plan.totalDurationSeconds(), plan.scenes(), plan.fonts(), plan.subtitles(), plan.audio(),
+                plan.transitions(), plan.globalAssetRefs(), plan.renderStyle(), plan.aspectRatio(),
+                plan.renderPlanVersion(), plan.generatedAt(), plan.basedOnStoryboardVersion(), thumbnailBrief);
     }
 
     @Test
@@ -51,5 +59,16 @@ class ThumbnailCommandBuilderTest {
 
         assertThat(filterChain).contains("BUG");
         assertThat(filterChain).contains("borderw=6:bordercolor=black");
+    }
+
+    @Test
+    void prefersTheVisualDirectorsThumbnailBriefOverTheHookSceneText() {
+        RenderPlan plan = planWithHookAndThumbnailBrief("THIS BUG BREAKS EVERY LOOP", "CURIOSITY GAP HEADLINE");
+
+        List<String> command = ThumbnailCommandBuilder.build(plan, "ffmpeg", "thumbnail.jpg");
+        String filterChain = command.get(command.indexOf("-vf") + 1);
+
+        assertThat(filterChain).contains("CURIOSITY");
+        assertThat(filterChain).doesNotContain("drawtext=text='THIS");
     }
 }

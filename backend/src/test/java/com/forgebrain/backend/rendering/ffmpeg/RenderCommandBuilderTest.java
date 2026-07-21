@@ -32,7 +32,7 @@ class RenderCommandBuilderTest {
                 new RenderPlan.FontSet("Inter-Bold", "Inter-Regular", "JetBrainsMono-Regular"), subtitles,
                 new RenderPlan.AudioPlan("voiceover/java-for-loop", "music/lofi-focus", -18.0), List.of(), List.of(),
                 Storyboard.RenderStyle.DARK_MODE_IDE, Storyboard.AspectRatio.RATIO_9_16, "1.0.0", Instant.now(),
-                "1.0.0-heuristic");
+                "1.0.0-heuristic", null);
     }
 
     private SceneRenderPlan hookScene() {
@@ -205,6 +205,25 @@ class RenderCommandBuilderTest {
             index += needle.length();
         }
         return count;
+    }
+
+    @Test
+    void filterChainRendersAFullBleedVisualCardWhenTheVisualDirectorMarkedTheSceneFullBleed() {
+        SceneRenderPlan fullBleedScene = new SceneRenderPlan(
+                "scene-1-hook", 0, 5, 5, Scene.SceneType.HOOK,
+                new SceneRenderPlan.BackgroundSpec(SceneRenderPlan.FULL_BLEED_STYLE_REF, "desc"),
+                List.of(textLayer("THIS BREAKS EVERY LOOP")), null, "none", List.of(1), List.of(),
+                Scene.TransitionStyle.HARD_CUT, Scene.TransitionStyle.HARD_CUT);
+        RenderPlan plan = renderPlan(List.of(fullBleedScene));
+
+        List<String> command = RenderCommandBuilder.build(plan, "ffmpeg", "reel.mp4", "subtitles.srt", null);
+        String filterChain = command.get(command.indexOf("-vf") + 1);
+
+        // Full-bleed spans nearly the whole 1080x1920 frame (24px margin), not the small
+        // 50px-margin accent card the default heading treatment uses.
+        assertThat(filterChain).contains("drawbox=x=24:y=24:w=1032:h=1872");
+        assertThat(filterChain).contains("drawtext=text='THIS BREAKS EVERY LOOP'");
+        assertThat(filterChain).doesNotContain("drawbox=x=50:y=");
     }
 
     @Test

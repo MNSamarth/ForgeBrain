@@ -73,7 +73,8 @@ class VertexAiScriptServiceImplTest {
 
     private static VertexAiConfig config(String projectId, String scriptModel) {
         return new VertexAiConfig(projectId, "us-central1", "", "", scriptModel, "",
-                0.4, 2048, "application/json", 0.4, 2048, "application/json", 0.4, 2048, "application/json");
+                0.4, 2048, "application/json", 0.4, 2048, "application/json", 0.4, 2048, "application/json",
+                "gemini-2.5-pro", 0.4, 2048, "application/json");
     }
 
     @Test

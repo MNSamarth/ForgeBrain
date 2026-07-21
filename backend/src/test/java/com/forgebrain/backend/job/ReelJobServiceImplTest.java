@@ -136,15 +136,15 @@ class ReelJobServiceImplTest {
         assertThat(report.jobId()).isEqualTo(job.jobId());
         assertThat(report.status()).isEqualTo("COMPLETED");
         assertThat(report.errors()).isEmpty();
-        List<String> expectedStages = new java.util.ArrayList<>(List.of("AI_PIPELINE", "VOICE", "SUBTITLES",
-                "ASSETS", "RENDER_PLAN", "RENDER_VALIDATION", "RENDER_EXECUTION", "REVIEWING"));
+        List<String> expectedStages = new java.util.ArrayList<>(List.of("AI_PIPELINE", "VISUAL_DIRECTOR", "VOICE",
+                "SUBTITLES", "ASSETS", "RENDER_PLAN", "RENDER_VALIDATION", "RENDER_EXECUTION", "REVIEWING"));
         if (approved) {
             expectedStages.add("PUBLISHING");
         }
         assertThat(report.stageResults()).extracting(s -> s.stageName())
                 .containsExactlyElementsOf(expectedStages);
         assertThat(report.stageResults()).allMatch(s -> s.success());
-        assertThat(report.fallbackStages()).contains("VOICE");
+        assertThat(report.fallbackStages()).contains("VOICE", "VISUAL_DIRECTOR");
         assertThat(report.packagingSummary()).isNotBlank();
 
         assertThat(report.reviewResult()).isNotNull();

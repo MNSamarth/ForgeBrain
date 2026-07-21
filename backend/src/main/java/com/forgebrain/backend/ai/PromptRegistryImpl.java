@@ -42,6 +42,11 @@ public class PromptRegistryImpl implements PromptRegistry {
                 "Generates spoken narration and on-screen text for the Script stage — see ScriptPromptBuilder.",
                 vertexAiConfig.scriptModel(), vertexAiConfig.scriptTemperature(),
                 vertexAiConfig.scriptMaxOutputTokens(), vertexAiConfig.scriptResponseMimeType()));
+        defs.put("visual-director", new PromptDefinition("visual-director", VERSION,
+                "Directs each scene's visual treatment (composition, camera motion, imagery, diagram/code "
+                        + "framing) for the Visual Director stage — see VisualDirectorPromptBuilder.",
+                vertexAiConfig.visualDirectorModel(), vertexAiConfig.visualDirectorTemperature(),
+                vertexAiConfig.visualDirectorMaxOutputTokens(), vertexAiConfig.visualDirectorResponseMimeType()));
         this.definitions = Map.copyOf(defs);
     }
 

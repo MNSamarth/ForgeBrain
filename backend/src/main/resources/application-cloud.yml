@@ -32,3 +32,4 @@ forgebrain:
     project-id: ""
   text-to-speech:
     enabled: true
+    strict: true

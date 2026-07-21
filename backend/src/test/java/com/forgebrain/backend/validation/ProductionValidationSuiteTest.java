@@ -132,7 +132,8 @@ class ProductionValidationSuiteTest {
                 .filter(m -> m.invocations() > 0)
                 .map(PromptMetrics::promptName)
                 .toList();
-        assertThat(promptsInvoked).containsExactlyInAnyOrder("research", "lesson", "content-director", "script");
+        assertThat(promptsInvoked).containsExactlyInAnyOrder("research", "lesson", "content-director", "script",
+                "visual-director");
         // Rendering completed.
         assertThat(jobReport.stageResults()).anyMatch(s -> s.stageName().equals("RENDER_EXECUTION") && s.success());
         // Review executed.

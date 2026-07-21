@@ -32,6 +32,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                                          to use the SDK default
  * @param scriptResponseMimeType           response MIME type requested for script generation,
  *                                          e.g. {@code "application/json"}
+ * @param visualDirectorModel              model identifier used by {@link com.forgebrain.backend.services.VisualDirectorService}
+ * @param visualDirectorTemperature        sampling temperature for visual direction generation,
+ *                                          or {@code null} to use the SDK default
+ * @param visualDirectorMaxOutputTokens    output token cap for visual direction generation, or
+ *                                          {@code null} to use the SDK default
+ * @param visualDirectorResponseMimeType   response MIME type requested for visual direction
+ *                                          generation, e.g. {@code "application/json"}
  */
 @ConfigurationProperties(prefix = "forgebrain.vertex-ai")
 public record VertexAiConfig(
@@ -49,6 +56,10 @@ public record VertexAiConfig(
         String contentDirectorResponseMimeType,
         Double scriptTemperature,
         Integer scriptMaxOutputTokens,
-        String scriptResponseMimeType
+        String scriptResponseMimeType,
+        String visualDirectorModel,
+        Double visualDirectorTemperature,
+        Integer visualDirectorMaxOutputTokens,
+        String visualDirectorResponseMimeType
 ) {
 }

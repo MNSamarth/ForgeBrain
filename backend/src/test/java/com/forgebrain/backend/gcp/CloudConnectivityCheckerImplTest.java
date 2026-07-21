@@ -30,7 +30,7 @@ class CloudConnectivityCheckerImplTest {
     private static VertexAiConfig vertexAiConfig() {
         return new VertexAiConfig("forgebrain-prod", "us-central1", "gemini-2.0-flash-001", "gemini-2.0-pro-001",
                 "gemini-2.0-pro-001", "gemini-2.0-flash-001", 0.4, 2048, "application/json", 0.4, 2048,
-                "application/json", 0.4, 2048, "application/json");
+                "application/json", 0.4, 2048, "application/json", "gemini-2.5-pro", 0.4, 2048, "application/json");
     }
 
     // ------------------------------------------------------------------------------ Vertex AI

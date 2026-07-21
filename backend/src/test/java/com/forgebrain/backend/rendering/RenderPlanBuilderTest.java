@@ -246,6 +246,22 @@ class RenderPlanBuilderTest {
     }
 
     @Test
+    void enrichedBuildsAudioTrackRefFromTheVoiceResultSoTheRendererActuallyConsumesTheNarrationOutput() {
+        VoiceResult voiceResult = scaledVoiceResult();
+        SubtitleResult subtitleResult = new SubtitleServiceImpl().generateSubtitles(storyboard, voiceResult);
+        RenderingConfig renderingConfig = new RenderingConfig("ffmpeg", "ffprobe",
+                tempDir.resolve("renders").toString(), tempDir.resolve("voiceover").toString(),
+                tempDir.resolve("empty-assets").toString());
+        AssetManifest assetManifest = new AssetServiceImpl(renderingConfig).resolveAssets(storyboard);
+
+        RenderPlan plan = renderPlanBuilder.build(storyboard, voiceResult, subtitleResult, assetManifest);
+
+        // RenderCommandBuilder passes this straight through to ffmpeg's audio input — it must be
+        // exactly the file VoiceResult reports, not independently derived or reconstructed.
+        assertThat(plan.audio().voiceoverTrackRef()).isEqualTo(voiceResult.scenes().get(0).audioFileUri());
+    }
+
+    @Test
     void enrichedBuildUsesVoiceResultsRealDurationsForSceneTimingInsteadOfTheStoryboardsEstimate() {
         VoiceResult voiceResult = scaledVoiceResult();
         SubtitleResult subtitleResult = new SubtitleServiceImpl().generateSubtitles(storyboard, voiceResult);
@@ -292,6 +308,65 @@ class RenderPlanBuilderTest {
         Scene.TimedSubtitleSegment firstOriginalSegment = storyboard.scenes().get(0).subtitleSegments().get(0);
         assertThat(firstCue.startTime())
                 .isCloseTo(firstOriginalSegment.startTime() * SCALE_FACTOR, org.assertj.core.data.Offset.offset(0.1));
+    }
+
+    // ----------------------------------------------------------------- Visual Director overload
+
+    @Test
+    void visualPlanOverloadMarksFullBleedScenesAndSetsTheThumbnailBrief() {
+        VoiceResult voiceResult = scaledVoiceResult();
+        SubtitleResult subtitleResult = new SubtitleServiceImpl().generateSubtitles(storyboard, voiceResult);
+        RenderingConfig renderingConfig = new RenderingConfig("ffmpeg", "ffprobe",
+                tempDir.resolve("renders").toString(), tempDir.resolve("voiceover").toString(),
+                tempDir.resolve("empty-assets").toString());
+        AssetManifest assetManifest = new AssetServiceImpl(renderingConfig).resolveAssets(storyboard);
+        com.forgebrain.backend.models.VisualPlan visualPlan =
+                new com.forgebrain.backend.services.VisualDirectorServiceImpl().generateVisualPlan(script, storyboard);
+
+        RenderPlan plan = renderPlanBuilder.build(storyboard, voiceResult, subtitleResult, assetManifest, visualPlan);
+
+        // The heuristic Visual Director marks the HOOK scene (always index 0) FULL_BLEED.
+        assertThat(plan.scenes().get(0).background().styleRef()).isEqualTo(SceneRenderPlan.FULL_BLEED_STYLE_REF);
+        assertThat(plan.thumbnailBrief()).isEqualTo(visualPlan.thumbnailBrief());
+        assertThat(plan.renderPlanVersion()).isEqualTo("1.0.0-reconciled");
+    }
+
+    @Test
+    void visualPlanOverloadOverridesMotionCueAndTransitionsWhenPresent() {
+        VoiceResult voiceResult = scaledVoiceResult();
+        SubtitleResult subtitleResult = new SubtitleServiceImpl().generateSubtitles(storyboard, voiceResult);
+        RenderingConfig renderingConfig = new RenderingConfig("ffmpeg", "ffprobe",
+                tempDir.resolve("renders").toString(), tempDir.resolve("voiceover").toString(),
+                tempDir.resolve("empty-assets").toString());
+        AssetManifest assetManifest = new AssetServiceImpl(renderingConfig).resolveAssets(storyboard);
+        com.forgebrain.backend.models.VisualPlan visualPlan =
+                new com.forgebrain.backend.services.VisualDirectorServiceImpl().generateVisualPlan(script, storyboard);
+
+        RenderPlan plan = renderPlanBuilder.build(storyboard, voiceResult, subtitleResult, assetManifest, visualPlan);
+
+        for (int i = 0; i < storyboard.scenes().size(); i++) {
+            var visualScenePlan = visualPlan.scenes().get(i);
+            var renderScene = plan.scenes().get(i);
+            assertThat(renderScene.animationInstructions()).isEqualTo(visualScenePlan.motionCue());
+            assertThat(renderScene.transitionIn()).isEqualTo(visualScenePlan.transitionIn());
+            assertThat(renderScene.transitionOut()).isEqualTo(visualScenePlan.transitionOut());
+        }
+    }
+
+    @Test
+    void fourArgumentOverloadStillLeavesEveryStyleRefAtTheRenderStyleDefaultAndThumbnailBriefNull() {
+        VoiceResult voiceResult = scaledVoiceResult();
+        SubtitleResult subtitleResult = new SubtitleServiceImpl().generateSubtitles(storyboard, voiceResult);
+        RenderingConfig renderingConfig = new RenderingConfig("ffmpeg", "ffprobe",
+                tempDir.resolve("renders").toString(), tempDir.resolve("voiceover").toString(),
+                tempDir.resolve("empty-assets").toString());
+        AssetManifest assetManifest = new AssetServiceImpl(renderingConfig).resolveAssets(storyboard);
+
+        RenderPlan plan = renderPlanBuilder.build(storyboard, voiceResult, subtitleResult, assetManifest);
+
+        assertThat(plan.thumbnailBrief()).isNull();
+        assertThat(plan.scenes()).noneMatch(
+                scene -> SceneRenderPlan.FULL_BLEED_STYLE_REF.equals(scene.background().styleRef()));
     }
 
     private static double round(double value) {

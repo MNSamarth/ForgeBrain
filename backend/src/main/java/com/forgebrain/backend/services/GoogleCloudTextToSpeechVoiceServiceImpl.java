@@ -2,6 +2,7 @@ package com.forgebrain.backend.services;
 
 import com.forgebrain.backend.config.RenderingConfig;
 import com.forgebrain.backend.config.TextToSpeechConfig;
+import com.forgebrain.backend.exceptions.RenderExecutionException;
 import com.forgebrain.backend.models.Scene;
 import com.forgebrain.backend.models.Storyboard;
 import com.forgebrain.backend.models.VoiceResult;
@@ -33,7 +34,9 @@ import org.slf4j.LoggerFactory;
  * convention (see {@link VoiceServiceImpl}) that every {@link SceneAudio} in one
  * {@link VoiceResult} references the same single audio file, which {@link
  * com.forgebrain.backend.rendering.RenderPlanBuilder}'s reconciled path depends on. Falls back to
- * {@code fallback} (the silent-track {@link VoiceServiceImpl}) on any synthesis failure — a
+ * {@code fallback} (the silent-track {@link VoiceServiceImpl}) on any synthesis failure, unless
+ * {@link TextToSpeechConfig#strict()} is set (the {@code cloud} profile's default), in which case
+ * the failure is rethrown instead of silently swallowed — a
  * missing credential, quota error, or network failure must never break rendering; it just means
  * this reel renders with the documented silent placeholder like every reel did before this class
  * existed.
@@ -64,6 +67,13 @@ public class GoogleCloudTextToSpeechVoiceServiceImpl implements VoiceService {
         try {
             return synthesize(storyboard, voiceProfile);
         } catch (Exception e) {
+            if (config.strict()) {
+                throw new RenderExecutionException("Google Cloud Text-to-Speech synthesis failed for topic '"
+                        + storyboard.topicId() + "' and forgebrain.text-to-speech.strict is true, so this render is"
+                        + " refusing to fall back to silent narration. Fix the underlying credential/quota/network"
+                        + " issue, or set forgebrain.text-to-speech.strict: false to allow the silent placeholder"
+                        + " fallback.", e);
+            }
             log.warn("Google Cloud Text-to-Speech synthesis failed for topic '{}'; falling back to the silent "
                     + "placeholder track. See backend/README.md's voice pipeline notes.", storyboard.topicId(), e);
             return fallback.generateVoice(storyboard, voiceProfile);

@@ -445,15 +445,67 @@ platform adapter selection exactly:
   clip's real duration via `ffprobe`, then concatenates every clip in scene order into one combined
   file with `ffmpeg`'s concat demuxer — preserving the existing convention that every `SceneAudio`
   in one `VoiceResult` references the same single audio file, which `RenderPlanBuilder`'s
-  reconciled path depends on to place scenes back-to-back by real duration. Any synthesis failure
-  (missing credentials, quota, network) falls back to `VoiceServiceImpl`'s silent track — narration
-  never blocks a render. Configure the voice under `forgebrain.text-to-speech.*` (`language-code`,
-  `voice-name`, `speaking-rate`, `pitch`); authentication is Application Default Credentials, same
-  as every other live Google Cloud call in this codebase — see "Live GCP Configuration" below.
-  Enabled by default under the `cloud` profile.
+  reconciled path depends on to place scenes back-to-back by real duration. Configure the voice
+  under `forgebrain.text-to-speech.*` (`language-code`, `voice-name`, `speaking-rate`, `pitch`);
+  authentication is Application Default Credentials, same as every other live Google Cloud call in
+  this codebase — see "Live GCP Configuration" below. Enabled by default under the `cloud` profile.
+
+**`forgebrain.text-to-speech.strict`** decides what a synthesis failure means: `false` (every
+local/dev profile's default) — a missing credential, quota error, or network failure falls back to
+`VoiceServiceImpl`'s silent track, the same documented behavior as before this flag existed.
+`true` (the `cloud` profile's default) — narration is expected to be real in that environment, so a
+synthesis failure is rethrown instead of silently shipping a mute reel; fix the underlying issue or
+explicitly set `strict: false` to accept the silent fallback there too. `strict` has no effect when
+`enabled` is `false` — the silent track is the deliberately-chosen path in that case, not a failure.
 
 Both paths report `wordTimings` as empty, which `renderer/voice-spec.md` Section 8 explicitly
 sanctions.
+
+## Visual Director
+
+`VisualDirectorService` sits between Script/Storyboard and rendering — it decides HOW each already
+-final scene should look (composition, camera motion, imagery, diagram/code framing), the same way
+`ContentDirectorService` decides how a lesson should be taught, without changing scene content,
+order, or timing. `VisualDirectorServiceImplTest`/`VertexAiVisualDirectorServiceImplTest` cover
+scene-type routing, thumbnail brief generation, code-vs-diagram routing, and fallback behavior.
+
+Wired as its own `VISUAL_DIRECTOR` pipeline stage in both `ReelExportServiceImpl` and
+`ReelJobServiceImpl`, running right after the AI pipeline completes (both `Script` and `Storyboard`
+already exist) and before Voice/Subtitles/Assets:
+
+- **`VertexAiVisualDirectorServiceImpl`** (the single `@Component` for `VisualDirectorService`) —
+  calls `AiGateway` with the `visual-director` prompt (`forgebrain.vertex-ai.visual-director-model`,
+  `gemini-2.5-pro` by default) to generate one structured visual scene plan per storyboard scene —
+  `scene_primitive` (HOOK/COMPARISON/DIAGRAM/CODE/FLOW/ARCHITECTURE/WALKTHROUGH/RECAP/CTA),
+  `composition` (FULL_BLEED/SPLIT_SCREEN/CENTERED_CARD/NESTED_BOXES/CODE_PANEL/DIAGRAM_FLOW),
+  camera motion, background style, foreground elements, an image prompt brief, a motion cue, and
+  transitions — plus a reel-level `thumbnail_brief`. Scene identity and duration are never asked of
+  the model: the response is zipped onto `storyboard.scenes()` by index, so visual direction can
+  never disagree with timing that's already final.
+- **`VisualDirectorServiceImpl`** (the fallback, exercised whenever the AI Gateway isn't usable) —
+  derives every field deterministically from data the storyboard scene already carries (`sceneType`,
+  `onScreenText`, `codeBlock`, `motionNotes`, `highlightedWords`, transitions), so a fresh checkout
+  with no GCP credentials still gets a coherent, real (not stubbed) visual plan.
+
+The renderer consumes a `VisualPlan` through `RenderPlanBuilder.build(Storyboard, VoiceResult,
+SubtitleResult, AssetManifest, VisualPlan)`: a scene whose composition is `FULL_BLEED` gets
+`SceneRenderPlan.BackgroundSpec.styleRef()` set to `SceneRenderPlan.FULL_BLEED_STYLE_REF`, which
+`RenderCommandBuilder` renders as a near-full-screen accent card instead of the default small
+accent card behind the heading; each scene's `motionCue`/`transitionIn`/`transitionOut` override
+the storyboard's own values when present; and the reel-level `thumbnailBrief` becomes
+`ThumbnailCommandBuilder`'s preferred headline over the hook scene's own text. `AssetServiceImpl`
+also accepts an optional `VisualPlan` (`resolveAssets(Storyboard, VisualPlan)`) and carries each
+scene's illustration prompt / diagram type into `AssetManifest.SceneAsset.visualPromptBrief()` — a
+lightweight, structured brief ready for an image generator (e.g. Imagen) to consume later; nothing
+in this codebase calls one yet, and Part 4 of this mission deliberately didn't force that
+subsystem into existence before it's needed.
+
+**Design inspiration**: the Visual Director's shape (a distinct "how should this look" pass,
+biased toward visual explanation over paragraphs, deciding when to use full-bleed imagery vs. code
+panels vs. diagrams) was inspired by patterns observed in a separate repository's video-generation
+service (RoleReady's `content_generation/video_generation.py`) — narration-driven pacing, scene
+composition, and retention-first editing. No code from that repository was copied; only the ideas
+informed this design.
 
 ## Subtitle Generation
 

@@ -7,6 +7,7 @@ import com.forgebrain.backend.exceptions.RenderExecutionException;
 import com.forgebrain.backend.models.AssetManifest;
 import com.forgebrain.backend.models.SubtitleResult;
 import com.forgebrain.backend.models.VideoPackage;
+import com.forgebrain.backend.models.VisualPlan;
 import com.forgebrain.backend.models.VoiceResult;
 import com.forgebrain.backend.rendering.RenderEngine;
 import com.forgebrain.backend.rendering.RenderPlan;
@@ -17,6 +18,7 @@ import com.forgebrain.backend.rendering.RenderValidationResult.ValidationIssue.S
 import com.forgebrain.backend.rendering.RenderValidator;
 import com.forgebrain.backend.services.AssetService;
 import com.forgebrain.backend.services.SubtitleService;
+import com.forgebrain.backend.services.VisualDirectorService;
 import com.forgebrain.backend.services.VoiceService;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -44,6 +46,7 @@ public class ReelExportServiceImpl implements ReelExportService {
             new VoiceResult.VoiceProfile("en-US-Neural2-C", "en-US", 1.0, 0.0);
 
     private final PipelineOrchestrator pipelineOrchestrator;
+    private final VisualDirectorService visualDirectorService;
     private final VoiceService voiceService;
     private final SubtitleService subtitleService;
     private final AssetService assetService;
@@ -54,11 +57,13 @@ public class ReelExportServiceImpl implements ReelExportService {
     private final ObjectMapper objectMapper;
     private final ReelExportReportWriter reportWriter;
 
-    public ReelExportServiceImpl(PipelineOrchestrator pipelineOrchestrator, VoiceService voiceService,
+    public ReelExportServiceImpl(PipelineOrchestrator pipelineOrchestrator,
+            VisualDirectorService visualDirectorService, VoiceService voiceService,
             SubtitleService subtitleService, AssetService assetService, RenderPlanBuilder renderPlanBuilder,
             RenderValidator renderValidator, RenderEngine renderEngine, RenderingConfig renderingConfig,
             ObjectMapper objectMapper, ReelExportReportWriter reportWriter) {
         this.pipelineOrchestrator = pipelineOrchestrator;
+        this.visualDirectorService = visualDirectorService;
         this.voiceService = voiceService;
         this.subtitleService = subtitleService;
         this.assetService = assetService;
@@ -90,6 +95,13 @@ public class ReelExportServiceImpl implements ReelExportService {
                     false, "n/a");
             topicId = pipelineResult.topicId();
 
+            VisualPlan visualPlan = runStage("VISUAL_DIRECTOR", stageResults,
+                    () -> visualDirectorService.generateVisualPlan(pipelineResult.script(),
+                            pipelineResult.storyboard()),
+                    result -> "visual_plan_version=" + result.visualPlanVersion() + ", scenes=" + result.scenes().size(),
+                    result -> result.visualPlanVersion().contains("heuristic"),
+                    result -> result.confidenceNotes().overallConfidence().name());
+
             VoiceResult voiceResult = runStage("VOICE", stageResults,
                     () -> voiceService.generateVoice(pipelineResult.storyboard(), DEFAULT_VOICE_PROFILE),
                     result -> "voice_version=" + result.voiceVersion() + ", total_actual_duration="
@@ -107,13 +119,14 @@ public class ReelExportServiceImpl implements ReelExportService {
                     result -> result.confidenceNotes().overallConfidence().name());
 
             AssetManifest assetManifest = runStage("ASSETS", stageResults,
-                    () -> assetService.resolveAssets(pipelineResult.storyboard()),
+                    () -> assetService.resolveAssets(pipelineResult.storyboard(), visualPlan),
                     result -> "asset_manifest_version=" + result.assetManifestVersion(),
                     result -> result.assetManifestVersion().contains("placeholder"),
                     result -> result.confidenceNotes().overallConfidence().name());
 
             RenderPlan renderPlan = runStage("RENDER_PLAN", stageResults,
-                    () -> renderPlanBuilder.build(pipelineResult.storyboard(), voiceResult, subtitleResult, assetManifest),
+                    () -> renderPlanBuilder.build(pipelineResult.storyboard(), voiceResult, subtitleResult,
+                            assetManifest, visualPlan),
                     result -> "scenes=" + result.scenes().size() + ", total_duration=" + result.totalDurationSeconds() + "s",
                     false, "n/a");
 

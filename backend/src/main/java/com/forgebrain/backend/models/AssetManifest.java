@@ -45,6 +45,17 @@ public record AssetManifest(
         }
     }
 
-    public record SceneAsset(String sceneId, List<String> assetRefs) {
+    /**
+     * @param visualPromptBrief a structured illustration/diagram prompt brief for this scene,
+     *                          carried from the Visual Director's {@link
+     *                          com.forgebrain.backend.models.VisualPlan.VisualScenePlan#imagePrompt()}/
+     *                          {@link com.forgebrain.backend.models.VisualPlan.VisualScenePlan#diagramType()}
+     *                          when a {@link VisualPlan} was supplied to {@link
+     *                          com.forgebrain.backend.services.AssetService#resolveAssets(Storyboard, VisualPlan)}
+     *                          — {@code null} otherwise, ready for an image generator to consume
+     *                          later without forcing a full image-generation subsystem now (see
+     *                          backend/README.md)
+     */
+    public record SceneAsset(String sceneId, List<String> assetRefs, String visualPromptBrief) {
     }
 }

@@ -4,6 +4,7 @@ import com.forgebrain.backend.models.AssetManifest;
 import com.forgebrain.backend.models.Scene;
 import com.forgebrain.backend.models.Storyboard;
 import com.forgebrain.backend.models.SubtitleResult;
+import com.forgebrain.backend.models.VisualPlan;
 import com.forgebrain.backend.models.VoiceResult;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -34,6 +35,14 @@ import org.springframework.stereotype.Component;
  *       text/timing comes from {@link SubtitleResult}'s already-reconciled segments, and
  *       fonts/music/watermark come from {@link AssetManifest}'s resolved theme instead of a
  *       guessed table.</li>
+ *   <li>{@link #build(Storyboard, VoiceResult, SubtitleResult, AssetManifest, VisualPlan)} — the
+ *       same reconciled path, additionally layered with the Visual Director's {@link VisualPlan}:
+ *       a scene whose {@link VisualPlan.VisualScenePlan#composition()} is {@code FULL_BLEED} gets
+ *       {@link SceneRenderPlan.BackgroundSpec#styleRef()} set to {@code "full-bleed-visual"} (the
+ *       marker {@code RenderCommandBuilder} looks for to pick its full-bleed treatment instead of
+ *       the default small accent card), and each scene's {@code motionCue}/{@code transitionIn}/
+ *       {@code transitionOut} override the storyboard's own {@code motionNotes}/transitions when
+ *       present — every other field stays exactly what the 4-argument overload would produce.</li>
  * </ul>
  */
 @Component
@@ -53,7 +62,7 @@ public class RenderPlanBuilder {
 
         List<SceneRenderPlan> scenes = storyboard.scenes().stream()
                 .map(scene -> toSceneRenderPlan(scene, scene.startTime(), scene.endTime(), scene.duration(),
-                        storyboard.renderStyle(), fonts, subtitleOrdersByScene))
+                        storyboard.renderStyle(), fonts, subtitleOrdersByScene, null))
                 .toList();
 
         List<RenderPlan.SceneTransition> transitions = buildTransitions(storyboard.scenes());
@@ -82,7 +91,8 @@ public class RenderPlanBuilder {
                 storyboard.aspectRatio(),
                 RENDER_PLAN_VERSION,
                 Instant.now(),
-                storyboard.storyboardVersion()
+                storyboard.storyboardVersion(),
+                null
         );
     }
 
@@ -93,6 +103,20 @@ public class RenderPlanBuilder {
      */
     public RenderPlan build(Storyboard storyboard, VoiceResult voiceResult, SubtitleResult subtitleResult,
             AssetManifest assetManifest) {
+        return buildReconciled(storyboard, voiceResult, subtitleResult, assetManifest, null);
+    }
+
+    /**
+     * The reconciled path, additionally layered with the Visual Director's {@link VisualPlan} —
+     * see the class-level javadoc for exactly what {@code visualPlan} changes.
+     */
+    public RenderPlan build(Storyboard storyboard, VoiceResult voiceResult, SubtitleResult subtitleResult,
+            AssetManifest assetManifest, VisualPlan visualPlan) {
+        return buildReconciled(storyboard, voiceResult, subtitleResult, assetManifest, visualPlan);
+    }
+
+    private RenderPlan buildReconciled(Storyboard storyboard, VoiceResult voiceResult, SubtitleResult subtitleResult,
+            AssetManifest assetManifest, VisualPlan visualPlan) {
         RenderPlan.VideoDimensions dimensions = dimensionsFor(storyboard.aspectRatio());
         AssetManifest.ResolvedTheme theme = assetManifest.resolvedTheme();
         RenderPlan.FontSet fonts = new RenderPlan.FontSet(theme.fontHeading(), theme.fontBody(), theme.fontCode());
@@ -113,12 +137,15 @@ public class RenderPlanBuilder {
 
         SubtitleTimeline subtitles = buildSubtitleTimeline(storyboard, subtitleResult);
         Map<String, List<Integer>> subtitleOrdersByScene = groupOrdersByScene(subtitles);
+        Map<String, VisualPlan.VisualScenePlan> visualScenesById = visualPlan == null ? Map.of()
+                : visualPlan.scenes().stream()
+                        .collect(java.util.stream.Collectors.toMap(VisualPlan.VisualScenePlan::sceneId, sp -> sp));
 
         List<SceneRenderPlan> scenes = storyboard.scenes().stream()
                 .map(scene -> {
                     double[] timing = realTimingByScene.get(scene.sceneId());
                     return toSceneRenderPlan(scene, timing[0], timing[1], timing[2], storyboard.renderStyle(),
-                            fonts, subtitleOrdersByScene);
+                            fonts, subtitleOrdersByScene, visualScenesById.get(scene.sceneId()));
                 })
                 .toList();
 
@@ -151,7 +178,8 @@ public class RenderPlanBuilder {
                 storyboard.aspectRatio(),
                 RENDER_PLAN_VERSION_RECONCILED,
                 Instant.now(),
-                storyboard.storyboardVersion()
+                storyboard.storyboardVersion(),
+                visualPlan == null ? null : visualPlan.thumbnailBrief()
         );
     }
 
@@ -213,9 +241,12 @@ public class RenderPlanBuilder {
 
     private SceneRenderPlan toSceneRenderPlan(Scene scene, double startTime, double endTime, double duration,
             Storyboard.RenderStyle renderStyle, RenderPlan.FontSet fonts,
-            Map<String, List<Integer>> subtitleOrdersByScene) {
+            Map<String, List<Integer>> subtitleOrdersByScene, VisualPlan.VisualScenePlan visualScenePlan) {
+        String styleRef = visualScenePlan != null && visualScenePlan.composition() == VisualPlan.Composition.FULL_BLEED
+                ? SceneRenderPlan.FULL_BLEED_STYLE_REF
+                : styleRefFor(renderStyle);
         SceneRenderPlan.BackgroundSpec background = new SceneRenderPlan.BackgroundSpec(
-                styleRefFor(renderStyle), scene.visualDescription());
+                styleRef, scene.visualDescription());
 
         List<SceneRenderPlan.TextLayer> textLayers = scene.onScreenText().stream()
                 .map(text -> new SceneRenderPlan.TextLayer("on-screen-text", text, "heading"))
@@ -233,6 +264,13 @@ public class RenderPlanBuilder {
 
         List<Integer> subtitleOrders = subtitleOrdersByScene.getOrDefault(scene.sceneId(), List.of());
 
+        String animationInstructions = visualScenePlan != null && visualScenePlan.motionCue() != null
+                && !visualScenePlan.motionCue().isBlank() ? visualScenePlan.motionCue() : scene.motionNotes();
+        Scene.TransitionStyle transitionIn = visualScenePlan != null && visualScenePlan.transitionIn() != null
+                ? visualScenePlan.transitionIn() : scene.transitionIn();
+        Scene.TransitionStyle transitionOut = visualScenePlan != null && visualScenePlan.transitionOut() != null
+                ? visualScenePlan.transitionOut() : scene.transitionOut();
+
         return new SceneRenderPlan(
                 scene.sceneId(),
                 startTime,
@@ -242,11 +280,11 @@ public class RenderPlanBuilder {
                 background,
                 textLayers,
                 codeLayer,
-                scene.motionNotes(),
+                animationInstructions,
                 subtitleOrders,
                 assetRefs,
-                scene.transitionIn(),
-                scene.transitionOut()
+                transitionIn,
+                transitionOut
         );
     }
 

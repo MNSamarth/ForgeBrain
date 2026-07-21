@@ -356,13 +356,48 @@ every issue found, not just the first, with `valid()` true iff nothing reached `
 
 `FfmpegRenderEngine` (`rendering/ffmpeg/`, the `RenderEngine` bean) turns a validated `RenderPlan`
 into a real, playable `.mp4` by shelling out to a local `ffmpeg` binary — no video composition
-library, no SaaS, no Docker. One reusable 9:16 vertical template: a `RenderStyle`-driven solid
-background for the full duration, one `drawtext` overlay per scene's on-screen text and per code
-layer's focus line (each timed to its scene via `enable='between(t,start,end)'`), subtitles
-burned in from an `.srt` file generated from `SubtitleTimeline`, and a short 0.3s fade in/out as
-the one transition this first version implements — every current storyboard scene already uses a
-hard cut between scenes, which a timed `enable=` window reproduces natively, so no per-scene
-crossfade logic was needed yet.
+library, no SaaS, no Docker. `RenderCommandBuilder` composes the filter graph; a set of small,
+pure "creator-quality layer" classes sit on top of it so a reel reads as an edited short rather
+than a static slide deck, without any change to `RenderPlan`/`SceneRenderPlan`/`Storyboard`
+themselves — the fields these classes consume (`sceneType`, `codeBlock`, `motionNotes`,
+`transitionIn`/`transitionOut`, `highlightedWords`, per-cue `emphasisWords`) already existed on
+the model, unused, before this layer was built:
+
+- **`CameraMotion`** — the background canvas renders oversized and is cropped down to the exact
+  output size with a slow, continuous sinusoidal offset, so the whole reel has a subtle, constant
+  pan instead of one dead-static frame.
+- **`SceneVisualTemplate`** — a per-`Scene.SceneType` accent color, heading size, optional accent
+  card, and short "kicker" label (e.g. `STEP BY STEP`, `WATCH OUT`), so hook/setup/code/step/
+  mistake/comparison/recap/CTA scenes each read as a visually distinct beat rather than the same
+  template repeated.
+- **`TextAnimator`** — every text layer slides up and fades in over its first ~0.35s instead of
+  appearing fully-formed the instant its scene starts.
+- **`CodeBlockRenderer`** — code scenes render an IDE-style card with *every* source line (not
+  just the focus line), with the line matching `CodeBlock.focusLine()` picked out by its own
+  highlighted background bar and accent text color.
+- **`DiagramRenderer`** — a scene whose on-screen text is a list of short items (e.g. `JVM` /
+  `Bytecode` / `Machine Code`) renders as stacked accent cards connected by a plain vertical bar,
+  instead of the same items stacked as static paragraphs. The connector is a solid bar, not an
+  arrow glyph, so it never depends on the active font having that glyph.
+- **`AssSubtitleWriter`** — subtitles burn in from `.ass` (Advanced SubStation Alpha), not `.srt`,
+  so each cue's `emphasisWords` render with an inline color override instead of being lost.
+- **`ThumbnailCommandBuilder`** — the thumbnail is a dedicated synthetic frame (the hook scene's
+  text, bold and outlined, over an accent band) built directly from a `lavfi` color source, not a
+  raw mid-video frame grab.
+
+One hard, environment-verified constraint governs every one of these: `drawtext`'s `fontsize` is
+**never** driven by a time expression anywhere in this codebase. Animating it was found to
+segfault the target `ffmpeg` build (preceded by a `Fontconfig error` log line) during development
+of this layer. `y` (position) and `alpha` (opacity) are animated freely instead — that combination
+was verified safe — so "punch" comes from per-scene-type size/color/card choices, not from
+resizing text at runtime.
+
+A short 0.3s fade in/out remains the one reel-wide transition; every current storyboard scene
+already uses a hard cut between scenes, which a timed `enable=` window reproduces natively.
+`Scene.TransitionStyle`'s other values (`QUICK_FADE`/`SLIDE`/`ZOOM_PUNCH`/`MATCH_CUT`) are still
+declared but not dispatched to distinct filter treatments — the slide-and-fade entrance every
+scene already gets from `TextAnimator` covers the "feels edited" goal without that added
+complexity; per-transition-type filters remain a documented next step, not a gap in this pass.
 
 **Local FFmpeg requirement**: a working `ffmpeg` binary must be installed and on `PATH` (override
 via `forgebrain.rendering.ffmpeg-path` if it isn't). Verified against FFmpeg 8.x with `libx264`,
@@ -373,43 +408,49 @@ rather than failing silently.
 
 **Audio**: when a `RenderPlan` was built via the enriched, reconciled `RenderPlanBuilder.build(Storyboard,
 VoiceResult, SubtitleResult, AssetManifest)` overload (see "End-to-End Reel Export" below),
-`RenderPlan.audio().voiceoverTrackRef()` is already a real file `VoiceServiceImpl` wrote —
-`PlaceholderAssetResolver`'s own lookup only matters for the simpler, standalone `RenderPlanBuilder.build(Storyboard)`
-path. Either way, the underlying convention is the same: a real file at
-`forgebrain.rendering.voiceover-assets-directory/<topicId>.{mp3,wav}`, with a silent audio track
-(`ffmpeg`'s `anullsrc`) as the documented fallback when none exists — see "Voice Generation" below.
+`RenderPlan.audio().voiceoverTrackRef()` is already a real file — either `VoiceServiceImpl`'s
+silent placeholder or `GoogleCloudTextToSpeechVoiceServiceImpl`'s real narration, see "Voice
+Generation" below. `PlaceholderAssetResolver`'s own lookup only matters for the simpler,
+standalone `RenderPlanBuilder.build(Storyboard)` path. Either way, the underlying convention is
+the same: a real file at `forgebrain.rendering.voiceover-assets-directory/<topicId>.{mp3,wav}`.
 
 **Placeholder-safe assets**: when a `RenderPlan` comes from the enriched builder, fonts/music/watermark
 come from `AssetServiceImpl`'s resolved `AssetManifest` (see "Asset Management" below), which
 checks `forgebrain.rendering.assets-directory` for real catalog files before falling back to the
-same deterministic, `RenderStyle`-keyed names as before. Code panels still show the focus line as
-text rather than a real code screenshot image — that generation step doesn't exist yet.
+same deterministic, `RenderStyle`-keyed names as before.
 
-**What's still needed**: a real Text-to-Speech provider behind `VoiceServiceImpl` (Google Cloud
-Text-to-Speech, per `renderer/voice-spec.md` Section 6 — the seam is ready, nothing calls it yet);
-a real, populated asset catalog (font files, background media, licensed music) behind
-`AssetServiceImpl`, ideally backed by Cloud Storage in a real deployment rather than a local
-directory; code screenshot/card image generation; per-scene transition styles beyond hard cuts
-(`QUICK_FADE`/`SLIDE`/`ZOOM_PUNCH`/`MATCH_CUT` are defined on `Scene.TransitionStyle` but not yet
-implemented as distinct FFmpeg filters); and wiring `RendererService`/`RenderJob` around this
-engine for asynchronous job tracking (still just an interface — this path runs synchronously).
+**What's still needed**: a real, populated asset catalog (font files, background media, licensed
+music) behind `AssetServiceImpl`, ideally backed by Cloud Storage in a real deployment rather than
+a local directory; generated illustrations/icons/logos beyond the card/diagram/gradient treatment
+`CodeBlockRenderer`/`DiagramRenderer` already provide; per-transition-type filters (see above); and
+wiring `RendererService`/`RenderJob` around this engine for asynchronous job tracking (still just
+an interface — this path runs synchronously).
 
 ## Voice Generation
 
-`VoiceServiceImpl` (`services/VoiceServiceImpl.java`, the `VoiceService` bean) is the seam a real
-Google Cloud Text-to-Speech integration plugs into (`renderer/voice-spec.md` Section 6) without
-changing its contract. Two real, exercised paths:
+`VoiceServiceBeanConfig` (`services/VoiceServiceBeanConfig.java`) is the single place that decides
+which `VoiceService` bean is active — mirrors `PlatformPublishAdapterBeanConfig`'s dry-run-vs-real
+platform adapter selection exactly:
 
-- **A real narration file exists** at `forgebrain.rendering.voiceover-assets-directory/<topicId>.{mp3,wav}`
-  — its real duration is measured via `ffprobe` and distributed across scenes proportionally to
-  each scene's estimated share of the storyboard's total (the same idea `renderer/subtitle-spec.md`
-  Section 4 uses for its own fallback, applied here since no per-scene files or word-level timing
-  exist yet).
-- **No real file exists** (the normal case today) — a real silent WAV is synthesized via `ffmpeg`
-  at exactly the storyboard's total estimated duration and written to that same path, so every
-  scene's `actualDurationSeconds` equals its estimate (zero drift, honestly reported) and the
-  renderer has a genuine file to mix in. This is the documented fallback Part 3 of this mission
-  asked for, not a stub — and it's what the render path actually uses today.
+- **`forgebrain.text-to-speech.enabled: false`** (the default) — `VoiceServiceImpl` is active. Two
+  real, exercised paths: if a real narration file exists at
+  `forgebrain.rendering.voiceover-assets-directory/<topicId>.{mp3,wav}`, its real duration is
+  measured via `ffprobe` and distributed across scenes proportionally to each scene's estimated
+  share of the storyboard's total; otherwise a real silent WAV is synthesized via `ffmpeg` at
+  exactly the storyboard's total estimated duration, so every scene's `actualDurationSeconds`
+  equals its estimate (zero drift, honestly reported).
+- **`forgebrain.text-to-speech.enabled: true`** — `GoogleCloudTextToSpeechVoiceServiceImpl` is
+  active (`renderer/voice-spec.md` Section 6, mission Part 6). It synthesizes each scene's
+  `voiceoverText` as its own clip via the Google Cloud Text-to-Speech Java client, measures each
+  clip's real duration via `ffprobe`, then concatenates every clip in scene order into one combined
+  file with `ffmpeg`'s concat demuxer — preserving the existing convention that every `SceneAudio`
+  in one `VoiceResult` references the same single audio file, which `RenderPlanBuilder`'s
+  reconciled path depends on to place scenes back-to-back by real duration. Any synthesis failure
+  (missing credentials, quota, network) falls back to `VoiceServiceImpl`'s silent track — narration
+  never blocks a render. Configure the voice under `forgebrain.text-to-speech.*` (`language-code`,
+  `voice-name`, `speaking-rate`, `pitch`); authentication is Application Default Credentials, same
+  as every other live Google Cloud call in this codebase — see "Live GCP Configuration" below.
+  Enabled by default under the `cloud` profile.
 
 Both paths report `wordTimings` as empty, which `renderer/voice-spec.md` Section 8 explicitly
 sanctions.

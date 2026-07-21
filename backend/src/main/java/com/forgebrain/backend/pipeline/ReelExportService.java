@@ -10,7 +10,7 @@ public interface ReelExportService {
 
     /**
      * Runs one topic all the way through to a rendered MP4, writing {@code reel.mp4}, {@code
-     * metadata.json}, {@code subtitles.srt}, and {@code report.json} into one output folder.
+     * metadata.json}, {@code subtitles.ass}, and {@code report.json} into one output folder.
      * Throws if any stage fails — see {@link ReelExportReport} (still written on failure) for
      * exactly where and why.
      */

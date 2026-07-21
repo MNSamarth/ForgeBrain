@@ -14,7 +14,7 @@ public interface OutputPackagingService {
 
     /**
      * @param renderDirectory the working directory {@code FfmpegRenderEngine} already wrote
-     *                        {@code reel.mp4}/{@code thumbnail.jpg}/{@code subtitles.srt} into
+     *                        {@code reel.mp4}/{@code thumbnail.jpg}/{@code subtitles.ass} into
      * @param subtitleFile    the subtitle file's path within {@code renderDirectory}
      */
     ReelOutputPackage packageOutputs(String jobId, Path renderDirectory, VideoPackage videoPackage,

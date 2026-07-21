@@ -180,7 +180,7 @@ public class ReelExportServiceImpl implements ReelExportService {
             List<String> warnings, List<String> errors, VideoPackage videoPackage, SubtitleResult subtitleResult) {
         Path renderDirectory = Path.of(videoPackage.videoFileUri()).getParent();
         String metadataPath = writeMetadata(renderDirectory, videoPackage);
-        Path subtitleFile = renderDirectory.resolve("subtitles.srt");
+        Path subtitleFile = renderDirectory.resolve("subtitles.ass");
 
         Map<String, String> outputPaths = new LinkedHashMap<>();
         outputPaths.put("video", videoPackage.videoFileUri());

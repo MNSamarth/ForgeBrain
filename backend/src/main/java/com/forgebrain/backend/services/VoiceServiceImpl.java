@@ -20,7 +20,6 @@ import java.util.Locale;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 /**
  * Real {@link VoiceService} implementation, and the seam a future Google Cloud Text-to-Speech
@@ -48,8 +47,12 @@ import org.springframework.stereotype.Component;
  * Section 8 explicitly sanctions ("word_timings may be an empty array") — {@link
  * SubtitleServiceImpl} falls back to its own proportional-estimate method in that case, per
  * {@code renderer/subtitle-spec.md} Section 4.
+ *
+ * <p>Not a Spring {@code @Component}: {@link VoiceServiceBeanConfig} is the single place that
+ * decides between this fallback and {@link GoogleCloudTextToSpeechVoiceServiceImpl}'s real
+ * synthesis path, mirroring how {@code PlatformPublishAdapterBeanConfig} picks between dry-run
+ * and real publish adapters.
  */
-@Component
 public class VoiceServiceImpl implements VoiceService {
 
     private static final Logger log = LoggerFactory.getLogger(VoiceServiceImpl.class);

@@ -42,7 +42,7 @@ public class FfmpegRenderEngine implements RenderEngine {
 
     private static final Logger log = LoggerFactory.getLogger(FfmpegRenderEngine.class);
     private static final String OUTPUT_FILE_NAME = "reel.mp4";
-    private static final String SUBTITLE_FILE_NAME = "subtitles.srt";
+    private static final String SUBTITLE_FILE_NAME = "subtitles.ass";
     private static final String THUMBNAIL_FILE_NAME = "thumbnail.jpg";
 
     private final RenderValidator renderValidator;
@@ -92,14 +92,16 @@ public class FfmpegRenderEngine implements RenderEngine {
         verifyOutputFile(videoFile);
 
         Path thumbnailFile = renderDirectory.resolve(THUMBNAIL_FILE_NAME);
-        extractThumbnail(renderPlan, videoFile, thumbnailFile, renderDirectory);
+        extractThumbnail(renderPlan, thumbnailFile, renderDirectory);
 
         return buildVideoPackage(renderPlan, videoFile, thumbnailFile);
     }
 
     private void writeSubtitleFile(RenderPlan renderPlan, Path renderDirectory) {
         try {
-            Files.writeString(renderDirectory.resolve(SUBTITLE_FILE_NAME), SrtWriter.toSrt(renderPlan.subtitles()),
+            Files.writeString(renderDirectory.resolve(SUBTITLE_FILE_NAME),
+                    AssSubtitleWriter.toAss(renderPlan.subtitles(), renderPlan.dimensions().width(),
+                            renderPlan.dimensions().height()),
                     StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new RenderExecutionException("Could not write subtitle file for topic '"
@@ -107,18 +109,13 @@ public class FfmpegRenderEngine implements RenderEngine {
         }
     }
 
-    private void extractThumbnail(RenderPlan renderPlan, Path videoFile, Path thumbnailFile, Path renderDirectory) {
-        double thumbnailTimestamp = Math.min(1.0, renderPlan.totalDurationSeconds() / 2.0);
-        List<String> thumbnailCommand = List.of(
-                renderingConfig.ffmpegPath(), "-y",
-                "-ss", String.valueOf(thumbnailTimestamp),
-                "-i", videoFile.getFileName().toString(),
-                "-frames:v", "1",
+    private void extractThumbnail(RenderPlan renderPlan, Path thumbnailFile, Path renderDirectory) {
+        List<String> thumbnailCommand = ThumbnailCommandBuilder.build(renderPlan, renderingConfig.ffmpegPath(),
                 thumbnailFile.getFileName().toString());
         try {
             processRunner.run(thumbnailCommand, renderDirectory);
         } catch (RenderExecutionException e) {
-            log.warn("Thumbnail extraction failed for topic '{}'; the video itself rendered successfully, "
+            log.warn("Thumbnail generation failed for topic '{}'; the video itself rendered successfully, "
                     + "continuing without a thumbnail.", renderPlan.topicId(), e);
         }
     }

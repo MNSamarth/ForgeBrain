@@ -31,6 +31,7 @@
         <spring-cloud-gcp.version>5.4.2</spring-cloud-gcp.version>
         <google-cloud-vertexai.version>1.52.0</google-cloud-vertexai.version>
         <google-cloud-storage.version>2.70.0</google-cloud-storage.version>
+        <google-cloud-texttospeech.version>2.94.0</google-cloud-texttospeech.version>
     </properties>
 
     <dependencies>
@@ -47,6 +48,11 @@
             <groupId>com.google.cloud</groupId>
             <artifactId>google-cloud-storage</artifactId>
             <version>${google-cloud-storage.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-texttospeech</artifactId>
+            <version>${google-cloud-texttospeech.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

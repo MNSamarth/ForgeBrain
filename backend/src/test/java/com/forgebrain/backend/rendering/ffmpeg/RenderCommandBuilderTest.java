@@ -45,7 +45,7 @@ class RenderCommandBuilderTest {
 
     private SceneRenderPlan codeScene() {
         SceneRenderPlan.CodeLayer codeLayer = new SceneRenderPlan.CodeLayer(
-                "for (int i = 0; i < 5; i++) {}", "i < 5", "java");
+                "for (int i = 0; i < 5; i++) {\n    System.out.println(i);\n}", "System.out.println(i);", "java");
         return new SceneRenderPlan(
                 "scene-2-code-reveal", 5, 10, 5, Scene.SceneType.CODE_REVEAL,
                 new SceneRenderPlan.BackgroundSpec("dark-mode-ide", "desc"),
@@ -66,14 +66,27 @@ class RenderCommandBuilderTest {
     }
 
     @Test
-    void includesABackgroundColorInputMatchingDimensionsFpsAndDurationFromTheRenderStyle() {
+    void includesABackgroundColorInputOversizedForCameraPanMatchingFpsAndDurationFromTheRenderStyle() {
         RenderPlan plan = renderPlan(List.of(hookScene()));
 
         List<String> command = RenderCommandBuilder.build(plan, "ffmpeg", "reel.mp4", "subtitles.srt", null);
 
-        int colorInputIndex = command.indexOf("color=c=0x0d1117:s=1080x1920:r=30:d=5.00");
+        // Canvas is deliberately larger than the 1080x1920 output so the pan filter (crop with a
+        // time-varying offset) has room to move without ever showing an edge.
+        int colorInputIndex = command.indexOf("color=c=0x0d1117:s=1120x1960:r=30:d=5.00");
         assertThat(colorInputIndex).isPositive();
         assertThat(command.get(colorInputIndex - 1)).isEqualTo("-i");
+    }
+
+    @Test
+    void filterChainCropsTheOversizedCanvasDownToTheExactOutputDimensionsWithATimeVaryingPan() {
+        RenderPlan plan = renderPlan(List.of(hookScene()));
+
+        List<String> command = RenderCommandBuilder.build(plan, "ffmpeg", "reel.mp4", "subtitles.srt", null);
+        String filterChain = command.get(command.indexOf("-vf") + 1);
+
+        assertThat(filterChain).contains("crop=w=1080:h=1920");
+        assertThat(filterChain).contains("sin(2*PI*t/8)");
     }
 
     @Test
@@ -109,13 +122,16 @@ class RenderCommandBuilderTest {
     }
 
     @Test
-    void filterChainDrawsTheCodeLayersFocusLineForCodeScenes() {
+    void filterChainDrawsEveryCodeLineAndHighlightsTheFocusLineForCodeScenes() {
         RenderPlan plan = renderPlan(List.of(hookScene(), codeScene()));
 
         List<String> command = RenderCommandBuilder.build(plan, "ffmpeg", "reel.mp4", "subtitles.srt", null);
         String filterChain = command.get(command.indexOf("-vf") + 1);
 
-        assertThat(filterChain).contains("drawtext=text='i < 5'");
+        assertThat(filterChain).contains("drawtext=text='for (int i = 0; i < 5; i++) {'");
+        assertThat(filterChain)
+                .contains("drawtext=text='    System.out.println(i);':fontsize=30:fontcolor=0x7ee787");
+        assertThat(filterChain).contains("drawtext=text='}'");
         assertThat(filterChain).contains("enable='between(t\\,5.00\\,10.00)'");
     }
 
@@ -123,10 +139,10 @@ class RenderCommandBuilderTest {
     void filterChainReferencesTheSubtitleFileByBareNameAndIncludesFadeInAndOut() {
         RenderPlan plan = renderPlan(List.of(hookScene()));
 
-        List<String> command = RenderCommandBuilder.build(plan, "ffmpeg", "reel.mp4", "subtitles.srt", null);
+        List<String> command = RenderCommandBuilder.build(plan, "ffmpeg", "reel.mp4", "subtitles.ass", null);
         String filterChain = command.get(command.indexOf("-vf") + 1);
 
-        assertThat(filterChain).contains("subtitles=subtitles.srt:force_style=");
+        assertThat(filterChain).contains("subtitles=subtitles.ass");
         assertThat(filterChain).contains("fade=t=in:st=0:d=0.3");
         assertThat(filterChain).contains("fade=t=out:st=4.70:d=0.3");
     }
@@ -141,6 +157,54 @@ class RenderCommandBuilderTest {
         assertThat(command).containsSubsequence("-c:v", "libx264");
         assertThat(command).containsSubsequence("-c:a", "aac");
         assertThat(command).contains("-shortest");
+    }
+
+    @Test
+    void filterChainDrawsAnAccentCardAndKickerLabelForSceneTypesThatWantOne() {
+        SceneRenderPlan setupScene = new SceneRenderPlan(
+                "scene-1-setup", 0, 4, 4, Scene.SceneType.SETUP,
+                new SceneRenderPlan.BackgroundSpec("dark-mode-ide", "desc"),
+                List.of(textLayer("Before we loop...")), null, "none", List.of(1), List.of(),
+                Scene.TransitionStyle.HARD_CUT, Scene.TransitionStyle.HARD_CUT);
+        RenderPlan plan = renderPlan(List.of(setupScene));
+
+        List<String> command = RenderCommandBuilder.build(plan, "ffmpeg", "reel.mp4", "subtitles.srt", null);
+        String filterChain = command.get(command.indexOf("-vf") + 1);
+
+        assertThat(filterChain).contains("drawbox=x=50:y=");
+        assertThat(filterChain).contains("color=0x58a6ff@0.16:t=fill");
+        assertThat(filterChain).contains("drawtext=text='SETUP'");
+        assertThat(filterChain).contains("drawtext=text='Before we loop...'");
+    }
+
+    @Test
+    void filterChainRendersAFlowDiagramForScenesWithMultipleOnScreenTextItems() {
+        SceneRenderPlan stepScene = new SceneRenderPlan(
+                "scene-1-steps", 0, 6, 6, Scene.SceneType.STEP_BREAKDOWN,
+                new SceneRenderPlan.BackgroundSpec("dark-mode-ide", "desc"),
+                List.of(textLayer("JVM"), textLayer("Bytecode"), textLayer("Machine Code")), null, "none",
+                List.of(1), List.of(), Scene.TransitionStyle.HARD_CUT, Scene.TransitionStyle.HARD_CUT);
+        RenderPlan plan = renderPlan(List.of(stepScene));
+
+        List<String> command = RenderCommandBuilder.build(plan, "ffmpeg", "reel.mp4", "subtitles.srt", null);
+        String filterChain = command.get(command.indexOf("-vf") + 1);
+
+        assertThat(filterChain).contains("drawtext=text='JVM'");
+        assertThat(filterChain).contains("drawtext=text='Bytecode'");
+        assertThat(filterChain).contains("drawtext=text='Machine Code'");
+        assertThat(filterChain).contains("drawtext=text='STEP BY STEP'");
+        // Three stacked cards connected by two vertical bars.
+        assertThat(countOccurrences(filterChain, "color=0xd29922@0.16:t=fill")).isEqualTo(3);
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0;
+        int index = 0;
+        while ((index = haystack.indexOf(needle, index)) != -1) {
+            count++;
+            index += needle.length();
+        }
+        return count;
     }
 
     @Test

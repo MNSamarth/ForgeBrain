@@ -94,7 +94,9 @@ class ReelExportServiceImplTest {
 
         Path subtitleFile = Path.of(result.subtitleFilePath());
         assertThat(Files.isRegularFile(subtitleFile)).isTrue();
-        assertThat(Files.readString(subtitleFile)).contains("-->");
+        // Subtitles burn in from .ass now (word-highlight emphasis needs its inline color
+        // override tags), not .srt — see RenderCommandBuilder / AssSubtitleWriter.
+        assertThat(Files.readString(subtitleFile)).contains("Dialogue:");
 
         Path reportFile = Path.of(result.reportFilePath());
         assertThat(Files.isRegularFile(reportFile)).isTrue();

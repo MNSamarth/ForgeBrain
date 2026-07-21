@@ -38,7 +38,7 @@ public interface ReviewerService {
      *                        {@code null} outside the job layer — see {@link
      *                        ReviewResult#jobId()}
      * @param subtitleFileUri the actual on-disk location the subtitle file was written to (e.g.
-     *                        {@code <renderDirectory>/subtitles.srt}) — deliberately not {@code
+     *                        {@code <renderDirectory>/subtitles.ass}) — deliberately not {@code
      *                        SubtitleResult.subtitleFileUri()}, which Subtitle Generation leaves
      *                        {@code null} (that stage runs before a file exists; the renderer
      *                        writes it), so this is the one place a caller must supply the real

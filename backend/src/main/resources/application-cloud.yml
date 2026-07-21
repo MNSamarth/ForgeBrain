@@ -30,3 +30,5 @@ forgebrain:
     enabled: true
     media-bucket: ""
     project-id: ""
+  text-to-speech:
+    enabled: true

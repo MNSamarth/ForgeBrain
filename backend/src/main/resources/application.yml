@@ -82,6 +82,12 @@ forgebrain:
     output-directory: "data/renders"
     voiceover-assets-directory: "data/assets/voiceover"
     assets-directory: "../assets"
+  text-to-speech:
+    enabled: false
+    language-code: "en-US"
+    voice-name: "en-US-Neural2-D"
+    speaking-rate: 1.0
+    pitch: 0.0
   pipeline:
     run-on-startup: false
   reel-export:

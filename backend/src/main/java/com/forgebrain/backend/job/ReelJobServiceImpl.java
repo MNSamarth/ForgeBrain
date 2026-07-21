@@ -161,7 +161,7 @@ public class ReelJobServiceImpl implements ReelJobService {
             job = jobRepository.update(job.withRenderChecksum(videoPackage.checksum()));
 
             Path renderDirectory = Path.of(videoPackage.videoFileUri()).getParent();
-            Path subtitleFile = renderDirectory.resolve("subtitles.srt");
+            Path subtitleFile = renderDirectory.resolve("subtitles.ass");
 
             job = jobRepository.update(job.reviewing());
             reviewResult = runStage("REVIEWING", stageResults,

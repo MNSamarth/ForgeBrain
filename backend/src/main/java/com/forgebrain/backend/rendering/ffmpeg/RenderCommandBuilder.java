@@ -13,26 +13,29 @@ import java.util.Locale;
  * ffmpeg} binary. Every filter fragment here was verified against a real {@code ffmpeg} 8.x
  * binary before being encoded (see commit history); the escaping rules in particular
  * ({@link FfmpegTextEscaper}, the {@code \,} inside {@code between(t\,start\,end)}) are load
- * -bearing FFmpeg filtergraph syntax, not stylistic choices.
+ * -bearing FFmpeg filtergraph syntax, not stylistic choices — as is the fact that {@code
+ * fontsize} is never driven by a time expression anywhere in this file: doing so was verified to
+ * crash ffmpeg with a segmentation fault on this project's target build.
  *
- * <p>The single vertical reel template this produces: a solid, {@code RenderStyle}-driven
- * background color for the full duration (real per-scene backgrounds don't exist yet — Asset
- * Management isn't implemented), one {@code drawtext} overlay per scene text layer and per code
- * layer's focus line, subtitles burned in from an {@code .srt} file, and a short fade in/out as
- * the one "basic transition" this first version implements (every current storyboard scene uses
- * {@code HARD_CUT} between scenes already, which timed {@code enable=} windows reproduce
- * natively — see backend/README.md).
- *
- * <p>{@code subtitleFileName} and {@code outputFileName} are deliberately bare filenames, not
- * paths: {@link FfmpegRenderEngine} runs the process with its working directory set to the
- * render output folder specifically so this class never has to embed a Windows drive-letter
- * colon inside an FFmpeg filter string, which is the single most fragile part of the whole
- * command otherwise.
+ * <p>The "creator-quality layer" this class composes on top of the unchanged {@link RenderPlan}/
+ * {@link SceneRenderPlan} model: a continuously panning background ({@link CameraMotion}) instead
+ * of one static frame; a slide-and-fade text entrance per layer ({@link TextAnimator}) instead of
+ * text simply appearing; a per-{@link com.forgebrain.backend.models.Scene.SceneType} accent
+ * color, card, and kicker label ({@link SceneVisualTemplate}) so scenes read as visually distinct
+ * beats instead of one undifferentiated template; real multi-line syntax-styled code cards
+ * ({@link CodeBlockRenderer}) instead of a single plain-text focus line; simple stacked-card flow
+ * diagrams ({@link DiagramRenderer}) for scenes whose on-screen text is a list of short items
+ * (e.g. "JVM" / "Bytecode" / "Machine Code") instead of the same items stacked as static
+ * paragraphs; and word-highlighted {@code .ass} subtitles ({@link AssSubtitleWriter}) instead of
+ * plain {@code .srt}. See backend/README.md's "Creator-quality rendering layer" section.
  */
 final class RenderCommandBuilder {
 
     private static final String AUDIO_SAMPLE_RATE = "44100";
     private static final double FADE_DURATION_SECONDS = 0.3;
+    private static final int KICKER_FONT_SIZE = 28;
+    private static final int ACCENT_CARD_VERTICAL_PAD = 60;
+    private static final int ACCENT_CARD_MARGIN_X = 50;
 
     private RenderCommandBuilder() {
     }
@@ -43,11 +46,14 @@ final class RenderCommandBuilder {
         command.add(ffmpegPath);
         command.add("-y");
 
+        int canvasWidth = CameraMotion.expandedWidth(renderPlan.dimensions().width());
+        int canvasHeight = CameraMotion.expandedHeight(renderPlan.dimensions().height());
+
         command.add("-f");
         command.add("lavfi");
         command.add("-i");
         command.add("color=c=" + PlaceholderAssetResolver.backgroundColorHexFor(renderPlan.renderStyle())
-                + ":s=" + renderPlan.dimensions().width() + "x" + renderPlan.dimensions().height()
+                + ":s=" + canvasWidth + "x" + canvasHeight
                 + ":r=" + renderPlan.fps() + ":d=" + formatSeconds(renderPlan.totalDurationSeconds()));
 
         if (resolvedAudioFilePath != null) {
@@ -83,24 +89,17 @@ final class RenderCommandBuilder {
 
     private static String buildFilterChain(RenderPlan renderPlan, String subtitleFileName) {
         String textColor = PlaceholderAssetResolver.textColorFor(renderPlan.renderStyle());
+        RenderPlan.VideoDimensions dimensions = renderPlan.dimensions();
         List<String> filters = new ArrayList<>();
 
+        filters.add(CameraMotion.panFilter(dimensions.width(), dimensions.height()));
+        filters.add("vignette=PI/5");
+
         for (SceneRenderPlan scene : renderPlan.scenes()) {
-            int layerIndex = 0;
-            for (SceneRenderPlan.TextLayer textLayer : scene.textLayers()) {
-                filters.add(drawText(textLayer.text(), textColor, 64, 200 + layerIndex * 90,
-                        scene.startTime(), scene.endTime()));
-                layerIndex++;
-            }
-            if (scene.codeLayer() != null) {
-                filters.add(drawCodeFocusLine(scene.codeLayer().focusLine(), textColor,
-                        scene.startTime(), scene.endTime()));
-            }
+            filters.addAll(sceneFilters(scene, dimensions, textColor));
         }
 
-        filters.add("subtitles=" + subtitleFileName + ":force_style='FontName=Arial,FontSize=18,"
-                + "PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=2,"
-                + "Alignment=2,MarginV=140'");
+        filters.add("subtitles=" + subtitleFileName);
 
         double fadeOutStart = Math.max(0, renderPlan.totalDurationSeconds() - FADE_DURATION_SECONDS);
         filters.add("fade=t=in:st=0:d=" + FADE_DURATION_SECONDS);
@@ -109,16 +108,63 @@ final class RenderCommandBuilder {
         return String.join(",", filters);
     }
 
-    private static String drawText(String text, String color, int fontSize, int y, double start, double end) {
-        return "drawtext=text='" + FfmpegTextEscaper.escape(text) + "':fontsize=" + fontSize
-                + ":fontcolor=" + color + ":x=(w-text_w)/2:y=" + y
-                + ":enable='between(t\\," + formatSeconds(start) + "\\," + formatSeconds(end) + ")'";
+    private static List<String> sceneFilters(SceneRenderPlan scene, RenderPlan.VideoDimensions dimensions,
+            String textColor) {
+        SceneVisualTemplate template = SceneVisualTemplate.forSceneType(scene.sceneType());
+        List<String> filters = new ArrayList<>();
+
+        if (scene.codeLayer() != null) {
+            if (!scene.textLayers().isEmpty()) {
+                filters.addAll(headingFilters(scene.textLayers().get(0).text(), template, scene, dimensions,
+                        textColor));
+            }
+            filters.addAll(CodeBlockRenderer.buildFilters(scene.codeLayer(), scene.startTime(), scene.endTime(),
+                    dimensions));
+        } else if (scene.textLayers().size() > 1) {
+            if (!template.kicker().isEmpty()) {
+                filters.add(kickerFilter(template, scene, dimensions));
+            }
+            List<String> items = scene.textLayers().stream().map(SceneRenderPlan.TextLayer::text).toList();
+            filters.addAll(DiagramRenderer.buildFilters(items, template.accentColorHex(), template.accentCardColor(),
+                    scene.startTime(), scene.endTime(), dimensions));
+        } else if (!scene.textLayers().isEmpty()) {
+            filters.addAll(headingFilters(scene.textLayers().get(0).text(), template, scene, dimensions, textColor));
+        }
+
+        return filters;
     }
 
-    private static String drawCodeFocusLine(String focusLine, String color, double start, double end) {
-        return "drawtext=text='" + FfmpegTextEscaper.escape(focusLine) + "':fontsize=36:fontcolor=" + color
-                + ":x=(w-text_w)/2:y=h-500:box=1:boxcolor=black@0.6:boxborderw=20"
-                + ":enable='between(t\\," + formatSeconds(start) + "\\," + formatSeconds(end) + ")'";
+    private static List<String> headingFilters(String text, SceneVisualTemplate template, SceneRenderPlan scene,
+            RenderPlan.VideoDimensions dimensions, String textColor) {
+        List<String> filters = new ArrayList<>();
+        int textY = template.textYFor(dimensions.height());
+        String enable = enableClause(scene.startTime(), scene.endTime());
+
+        if (template.showAccentCard()) {
+            int cardHeight = template.headingFontSize() + ACCENT_CARD_VERTICAL_PAD;
+            int cardY = textY - ACCENT_CARD_VERTICAL_PAD / 2;
+            int cardWidth = dimensions.width() - 2 * ACCENT_CARD_MARGIN_X;
+            filters.add("drawbox=x=" + ACCENT_CARD_MARGIN_X + ":y=" + cardY + ":w=" + cardWidth
+                    + ":h=" + cardHeight + ":color=" + template.accentCardColor() + ":t=fill:enable=" + enable);
+        }
+        if (!template.kicker().isEmpty()) {
+            filters.add(kickerFilter(template, scene, dimensions));
+        }
+        filters.add(TextAnimator.drawText(text, textColor, template.headingFontSize(), textY, scene.startTime(),
+                scene.endTime()));
+        return filters;
+    }
+
+    private static String kickerFilter(SceneVisualTemplate template, SceneRenderPlan scene,
+            RenderPlan.VideoDimensions dimensions) {
+        int y = template.textYFor(dimensions.height()) - 70;
+        return "drawtext=text='" + FfmpegTextEscaper.escape(template.kicker()) + "':fontsize=" + KICKER_FONT_SIZE
+                + ":fontcolor=" + template.accentColorHex() + ":x=(w-text_w)/2:y=" + y
+                + ":enable=" + enableClause(scene.startTime(), scene.endTime());
+    }
+
+    private static String enableClause(double start, double end) {
+        return "'between(t\\," + formatSeconds(start) + "\\," + formatSeconds(end) + ")'";
     }
 
     private static String formatSeconds(double seconds) {

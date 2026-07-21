@@ -1,0 +1,32 @@
+# Cloud-mode overrides — activate with SPRING_PROFILES_ACTIVE=cloud (or
+# --spring.profiles.active=cloud / -Dspring-boot.run.profiles=cloud). Turns on the feature flags
+# for the live Vertex AI and Cloud Storage seams; the identifying values themselves (project id,
+# bucket name) are NOT committed here — see docs/CONFIGURATION.md Section 5 and
+# application-local.yml's identical convention. Supply them as environment variables when this
+# profile is actually active:
+#
+#   FORGEBRAIN_GCP_PROJECT-ID=forgebrain-prod
+#   FORGEBRAIN_GCP_STORAGE-BUCKET=forgebrain-artifacts
+#   FORGEBRAIN_VERTEX-AI_PROJECT-ID=forgebrain-prod
+#   FORGEBRAIN_CLOUD-STORAGE_PROJECT-ID=forgebrain-prod
+#   FORGEBRAIN_CLOUD-STORAGE_MEDIA-BUCKET=forgebrain-artifacts
+#
+# Authentication is Application Default Credentials (`gcloud auth application-default login`, or
+# the service account attached to the runtime environment) — no key file is read or committed.
+# See backend/README.md's "Live GCP Configuration" section for the full walkthrough.
+
+forgebrain:
+  application:
+    environment: cloud
+  gcp:
+    project-id: ""
+    region: "us-central1"
+    storage-bucket: ""
+    vertex-ai-enabled: true
+    gcs-enabled: true
+  vertex-ai:
+    project-id: ""
+  cloud-storage:
+    enabled: true
+    media-bucket: ""
+    project-id: ""

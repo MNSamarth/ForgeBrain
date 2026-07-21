@@ -38,6 +38,7 @@ Two organizing principles are layered on top of each other, both requested expli
 | `job` | The durable job layer on top of `ReelExportService`: `ReelJob`, `ReelJobRepository`, `OutputPackagingService`, `OutputStorage`, `ReelJobReport`, `ReelJobService`. See "Reel Job System" below. |
 | `runtime` | The single coordinator on top of `ReelJobService`: `ForgeBrainRuntime`, `RuntimeState`, `RuntimeReport`, `RuntimeReportWriter`. See "ForgeBrain Runtime" below. |
 | `validation` | The Production Validation Suite: `PipelineInvariants`, `ArtifactValidator`, `ProductionReadinessReport`/`ProductionReadinessReportWriter`. See "Production Validation" below. |
+| `gcp` | Live Google Cloud connectivity: `CloudConnectivityChecker`/`CloudConnectivitySmokeTestRunner`. See "Live GCP Configuration" below. |
 | `analytics` | Two generations of analytics types side by side: `PerformanceSnapshot`/`StrategyPerformanceAggregate` (real audience/platform metrics — see `analytics/analytics-spec.md`, still not active, no publishing integration posts anywhere real yet) and `ReelOutcomeSnapshot`/`TopicPerformanceAggregate`/`DimensionPerformanceAggregate`/`AnalyticsReport` plus `AnalyticsAggregator`/`AnalyticsMemoryFeedback` (real pipeline-outcome analytics, active today — see "Analytics / Feedback Loop" below). |
 | `publishing` | `PublishingMetadataGenerator`, `PlatformFormatter` (per-platform metadata formatting), and the `PlatformPublishAdapter` seam — dry-run (`AbstractDryRunPlatformPublishAdapter`, `YouTubeShortsPublishAdapter`, `InstagramReelsPublishAdapter`) and real (`YouTubeRealPublishAdapter`, `InstagramRealPublishAdapter`) implementations, chosen per platform by `PlatformPublishAdapterFactory`/`PlatformPublishAdapterBeanConfig`. See "Publishing" and "Real Platform Publishing" below. |
 
@@ -961,6 +962,71 @@ it; `ProductionValidationSuiteTest` needs a local `ffmpeg` binary (same requirem
 `RuntimeReport` it validated, both under `reports/` in whatever `execution-report-directory` is
 configured. A regression in any covered invariant fails that specific named check in the report
 (and the test), rather than a generic "something broke."
+
+## Live GCP Configuration
+
+ForgeBrain has a real Google Cloud project behind it: **project `forgebrain-prod`**, region
+`us-central1`, **bucket `forgebrain-artifacts`** — Vertex AI, Cloud Storage, and Secret Manager
+APIs enabled, a service account created, and **Application Default Credentials already
+configured** on the machines that need them. None of that changes how local development or CI
+work: every committed profile still defaults to fully local/dry-run, exactly as documented
+throughout this README — this section is about the opt-in path to the real project, not a new
+default.
+
+**Wiring.** `GcpConfig` (`config/GcpConfig.java`, `forgebrain.gcp.*`) is the one place that answers
+"is cloud mode on, and for which project" — `projectId`, `region`, `storageBucket`,
+`vertexAiEnabled`, `gcsEnabled`. It doesn't replace `VertexAiConfig`/`CloudStorageConfig`, which
+remain exactly what `VertexAiClientImpl`/`CloudStorageOutputStorage` read to do real work,
+unchanged — `GcpConfig` exists because Vertex AI had no explicit enablement flag of its own before
+this (only a reactive blank-project-id check inside `VertexAiClientImpl`), and because operators
+want one place to see the live target at a glance.
+
+**Enabling it.** A new `cloud` Spring profile (`application-cloud.yml`) turns on
+`forgebrain.gcp.vertex-ai-enabled`, `gcs-enabled`, and `forgebrain.cloud-storage.enabled` — the
+identifying values themselves (`forgebrain-prod`, `forgebrain-artifacts`) are **not committed**,
+per docs/CONFIGURATION.md Section 5 and `application-local.yml`'s identical convention; supply
+them as environment variables when the profile is active:
+
+```bash
+export FORGEBRAIN_GCP_PROJECT-ID=forgebrain-prod
+export FORGEBRAIN_GCP_STORAGE-BUCKET=forgebrain-artifacts
+export FORGEBRAIN_VERTEX-AI_PROJECT-ID=forgebrain-prod
+export FORGEBRAIN_CLOUD-STORAGE_PROJECT-ID=forgebrain-prod
+export FORGEBRAIN_CLOUD-STORAGE_MEDIA-BUCKET=forgebrain-artifacts
+
+./mvnw spring-boot:run -Dspring-boot.run.profiles=cloud
+```
+
+With ADC already configured (`gcloud auth application-default login`, or the attached service
+account in a real deployment), no key file is read or needed. Leave the profile unset (the
+default) and every seam behaves exactly as it always has — heuristic fallback for Vertex AI,
+`LocalOutputStorage` for output artifacts.
+
+**Smoke test.** `CloudConnectivityChecker` (`gcp/`) proves the live settings actually work: one
+minimal Vertex AI call via the existing, unmodified `VertexAiClient` (bypassing `AiGateway`'s
+retry/cache/routing on purpose — a connectivity check wants one narrow attempt at the lowest real
+layer, not a re-exercise of already-tested orchestration), and one minimal write via the existing,
+unmodified `OutputStorage` seam. Both return a result rather than throwing, and both skip without
+touching the network when their target isn't enabled — safe to call from anywhere, including a
+test with no credentials. Guarded like every other runner in this project:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=cloud \
+    -Dspring-boot.run.arguments=--forgebrain.gcp.smoke-test-on-startup=true
+```
+
+**Secrets.** `SecretManagerConfig` (`forgebrain.secret-manager.*`) is a structure-only placeholder
+— mirrors `FirestoreConfig`'s existing "reserved ahead of need" pattern. Nothing reads a secret
+through it yet; ADC remains the only real authentication path this project uses. It exists so a
+future real secret consumer (e.g. YouTube/Instagram credentials sourced from Secret Manager
+instead of plain environment variables) has somewhere to bind to without inventing a new config
+shape.
+
+**Tests.** `CloudConnectivityCheckerImplTest` (mocked `VertexAiClient`/`OutputStorage`, no real
+call) and `GcpConfigurationValidationTest` (boots the real app under both cloud-on and cloud-off
+scenarios, confirms the smoke-test runner is present only when explicitly enabled, and confirms
+`OutputStorageFactory` routes to `CloudStorageOutputStorage` for `forgebrain-artifacts` when
+`cloud-storage.enabled` is true) — no live credentials required for any of it.
 
 ## What's Deliberately Not Here
 

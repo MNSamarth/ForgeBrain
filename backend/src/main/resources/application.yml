@@ -49,6 +49,16 @@ forgebrain:
     temp-bucket: ""
     output-prefix: "reels"
     project-id: ""
+  gcp:
+    project-id: ""
+    region: "us-central1"
+    storage-bucket: ""
+    vertex-ai-enabled: false
+    gcs-enabled: false
+    smoke-test-on-startup: false
+  secret-manager:
+    enabled: false
+    project-id: ""
   firestore:
     project-id: ""
     database-id: "(default)"
